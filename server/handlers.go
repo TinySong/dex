@@ -262,6 +262,43 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 			loginURL.RawQuery = q.Encode()
 
 			http.Redirect(w, r, loginURL.String(), http.StatusFound)
+		case connector.TenxConnector:
+			s.logger.Info("tenxcloud connector")
+
+			_, login := conn.CheckCookie(r.Cookies())
+			if !login {
+				loginURL, err := url.Parse(conn.Redirect())
+				if err != nil {
+					s.logger.Errorf("loginURL error: %v", err)
+					s.renderError(r, w, http.StatusInternalServerError, "Connector Login Error")
+					return
+
+				}
+				query := url.Values{}
+				query.Add("state", authReq.ID)
+				backLinkURL := url.URL{
+					Path:     s.absPath("/oidc/auth"),
+					RawQuery: query.Encode(),
+				}
+				backLink = backLinkURL.String()
+
+				q := loginURL.Query()
+				q.Set("back", backLink)
+				s.logger.Debug(loginURL.String())
+				loginURL.RawQuery = q.Encode()
+				http.Redirect(w, r, loginURL.String(), http.StatusFound)
+				return
+			}
+			// already login in the cookies
+			authURL := url.URL{
+				Path: s.absPath("/oidc/auth"),
+			}
+			q := authURL.Query()
+			q.Set("state", authReq.ID)
+
+			authURL.RawQuery = q.Encode()
+			http.Redirect(w, r, authURL.String(), http.StatusFound)
+
 		case connector.SAMLConnector:
 			action, value, err := conn.POSTData(scopes, authReq.ID)
 			if err != nil {
@@ -293,6 +330,65 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 	default:
 		s.renderError(r, w, http.StatusBadRequest, "Unsupported request method.")
 	}
+}
+
+func (s *Server) handleCallBack(w http.ResponseWriter, r *http.Request) {
+	authID := r.URL.Query().Get("state")
+	if authID == "" {
+		s.renderError(r, w, http.StatusBadRequest, "User session error.")
+		return
+	}
+	authReq, err := s.storage.GetAuthRequest(authID)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			s.logger.Errorf("Invalid 'state' parameter provided: %v", err)
+			s.renderError(r, w, http.StatusBadRequest, "Requested resource does not exist.")
+			return
+		}
+		s.logger.Errorf("Failed to get auth request: %v", err)
+		s.renderError(r, w, http.StatusInternalServerError, "Database error.")
+		return
+	}
+	if connID := mux.Vars(r)["connector"]; connID != "" && connID != authReq.ConnectorID {
+		s.logger.Errorf("Connector mismatch: authentication started with id %q, but password login for id %q was triggered", authReq.ConnectorID, connID)
+		s.renderError(r, w, http.StatusInternalServerError, "Requested resource does not exist.")
+		return
+	}
+
+	conn, err := s.getConnector(authReq.ConnectorID)
+	if err != nil {
+		s.logger.Errorf("Failed to get connector with id %q : %v", authReq.ConnectorID, err)
+		s.renderError(r, w, http.StatusInternalServerError, "Requested resource does not exist.")
+		return
+	}
+	tenxConn, ok := conn.Connector.(connector.TenxConnector)
+	if !ok {
+		s.logger.Errorf("Expected password connector in handlePasswordLogin(), but got %v", tenxConn)
+		s.renderError(r, w, http.StatusInternalServerError, "Requested resource does not exist.")
+		return
+	}
+
+	cookies, login := tenxConn.CheckCookie(r.Cookies())
+	if !login {
+		s.logger.Errorf("Failed to finalize login: %v", err)
+		s.renderError(r, w, http.StatusInternalServerError, "Login error.")
+		return
+	}
+	s.logger.Debugf("cookies: %s", cookies)
+	scopes := parseScopes(authReq.Scopes)
+	identity, err := tenxConn.Login(r.Context(), scopes, cookies)
+	if err != nil {
+		s.logger.Errorf("Failed to get identity: %v", err)
+		s.renderError(r, w, http.StatusInternalServerError, "getting identity failed")
+	}
+	redirectURL, err := s.finalizeLogin(identity, authReq, conn.Connector)
+	if err != nil {
+		s.logger.Errorf("Failed to finalize login: %v", err)
+		s.renderError(r, w, http.StatusInternalServerError, "Login error.")
+		return
+	}
+
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
 func (s *Server) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
@@ -532,6 +628,7 @@ func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request) {
 		s.renderError(r, w, http.StatusInternalServerError, "Database error.")
 		return
 	}
+
 	if !authReq.LoggedIn {
 		s.logger.Errorf("Auth request does not have an identity for approval")
 		s.renderError(r, w, http.StatusInternalServerError, "Login process not yet finalized.")
@@ -753,6 +850,8 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 		s.tokenErrHelper(w, errInvalidRequest, "", http.StatusBadRequest)
 		return
 	}
+	// formatByte, _ := json.Marshal(r.Form)
+	// s.logger.Infof("handleToken formatByte: %s", string(formatByte))
 
 	grantType := r.PostFormValue("grant_type")
 	switch grantType {

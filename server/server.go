@@ -40,6 +40,7 @@ import (
 	"github.com/dexidp/dex/connector/oidc"
 	"github.com/dexidp/dex/connector/openshift"
 	"github.com/dexidp/dex/connector/saml"
+	"github.com/dexidp/dex/connector/tenxcloud"
 	"github.com/dexidp/dex/pkg/log"
 	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/web"
@@ -341,6 +342,7 @@ func newServer(ctx context.Context, c Config, rotationStrategy rotationStrategy)
 	handleWithCORS("/userinfo", s.handleUserInfo)
 	handleFunc("/auth", s.handleAuthorization)
 	handleFunc("/auth/{connector}", s.handleConnectorLogin)
+	handleFunc("/oidc/auth", s.handleConnectorLogin)
 	handleFunc("/auth/{connector}/login", s.handlePasswordLogin)
 	handleFunc("/device", s.handleDeviceExchange)
 	handleFunc("/device/auth/verify_code", s.verifyUserCode)
@@ -358,7 +360,7 @@ func newServer(ctx context.Context, c Config, rotationStrategy rotationStrategy)
 		}
 		s.handleConnectorCallback(w, r)
 	})
-	// For easier connector-specific web server configuration, e.g. for the
+	// For easier
 	// "authproxy" connector.
 	handleFunc("/callback/{connector}", s.handleConnectorCallback)
 	handleFunc("/approval", s.handleApproval)
@@ -537,6 +539,7 @@ var ConnectorsConfig = map[string]func() ConnectorConfig{
 	"atlassian-crowd": func() ConnectorConfig { return new(atlassiancrowd.Config) },
 	// Keep around for backwards compatibility.
 	"samlExperimental": func() ConnectorConfig { return new(saml.Config) },
+	"tenxcloud":        func() ConnectorConfig { return new(tenxcloud.Config) },
 }
 
 // openConnector will parse the connector config and open the connector.

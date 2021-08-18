@@ -47,6 +47,13 @@ type PasswordConnector interface {
 	Login(ctx context.Context, s Scopes, username, password string) (identity Identity, validPassword bool, err error)
 }
 
+type TenxConnector interface {
+	Prompt() string
+	Login(ctx context.Context, s Scopes, cookie string) (identity Identity, err error)
+	CheckCookie([]*http.Cookie) (string, bool)
+	Redirect() string
+}
+
 // CallbackConnector is an interface implemented by connectors which use an OAuth
 // style redirect flow to determine user information.
 type CallbackConnector interface {
