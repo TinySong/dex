@@ -16,6 +16,7 @@ ARG GOPROXY
 
 COPY go.mod go.sum ./
 COPY api/v2/go.mod api/v2/go.sum ./api/v2/
+RUN go env -w GOPROXY=https://goproxy.cn,direct
 RUN go mod download
 
 COPY . .
