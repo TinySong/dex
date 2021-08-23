@@ -487,12 +487,12 @@ func (s *Server) handleConnectorCallback(w http.ResponseWriter, r *http.Request)
 
 	authReq, err := s.storage.GetAuthRequest(authID)
 	if err != nil {
+		s.logger.Errorf("Failed to get auth request: %v", err)
 		if err == storage.ErrNotFound {
 			s.logger.Errorf("Invalid 'state' parameter provided: %v", err)
 			s.renderError(r, w, http.StatusBadRequest, "Requested resource does not exist.")
 			return
 		}
-		s.logger.Errorf("Failed to get auth request: %v", err)
 		s.renderError(r, w, http.StatusInternalServerError, "Database error.")
 		return
 	}
@@ -557,6 +557,7 @@ func (s *Server) finalizeLogin(identity connector.Identity, authReq storage.Auth
 		Email:             identity.Email,
 		EmailVerified:     identity.EmailVerified,
 		Groups:            identity.Groups,
+		Phone:             identity.Phone,
 	}
 
 	updater := func(a storage.AuthRequest) (storage.AuthRequest, error) {
@@ -573,7 +574,6 @@ func (s *Server) finalizeLogin(identity connector.Identity, authReq storage.Auth
 	if !claims.EmailVerified {
 		email += " (unverified)"
 	}
-
 	s.logger.Infof("login successful: connector %q, username=%q, preferred_username=%q, email=%q, groups=%q",
 		authReq.ConnectorID, claims.Username, claims.PreferredUsername, email, claims.Groups)
 

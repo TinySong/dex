@@ -27,6 +27,7 @@ type UserInfo struct {
 	ID          int    `json:"id"`
 	Namespace   string `json:"namespace"`
 	Email       string `json:"email"`
+	Phone       string `json:"phone"`
 	Token       string `json:"token"`
 	Role        int    `json:"role"`
 	AccountType string `json:"accountType"`
@@ -108,7 +109,6 @@ func (t *tenxConnector) Login(ctx context.Context, s connector.Scopes, cookie st
 	if err := t.UserSession(cookie); err != nil {
 		return connector.Identity{}, err
 	}
-
 	// call tce api use clienid and clientsecret
 	//TODO get cookies from browser
 	//TODO call tce api getting userinformation and filling in  Identity
@@ -118,6 +118,7 @@ func (t *tenxConnector) Login(ctx context.Context, s connector.Scopes, cookie st
 		PreferredUsername: "",
 		Email:             t.Session.User.Email,
 		EmailVerified:     true,
+		Phone:             t.Session.User.Phone,
 	}, nil
 }
 

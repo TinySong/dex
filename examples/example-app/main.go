@@ -29,9 +29,10 @@ type app struct {
 	clientID     string
 	clientSecret string
 	redirectURI  string
-
-	verifier *oidc.IDTokenVerifier
-	provider *oidc.Provider
+	logout       string
+	title        string
+	verifier     *oidc.IDTokenVerifier
+	provider     *oidc.Provider
 
 	// Does the provider use "offline_access" scope to request a refresh token
 	// or does it use "access_type=offline" (e.g. Google)?
@@ -195,6 +196,8 @@ func cmd() *cobra.Command {
 	c.Flags().StringVar(&a.clientID, "client-id", "example-app", "OAuth2 client ID of this application.")
 	c.Flags().StringVar(&a.clientSecret, "client-secret", "ZXhhbXBsZS1hcHAtc2VjcmV0", "OAuth2 client secret of this application.")
 	c.Flags().StringVar(&a.redirectURI, "redirect-uri", "http://127.0.0.1:5555/callback", "Callback URL for OAuth2 responses.")
+	c.Flags().StringVar(&a.logout, "logout-uri", "https://127.0.0.1/logout", "logout the auth server")
+	c.Flags().StringVar(&a.title, "title", "app1", "app title")
 	c.Flags().StringVar(&issuerURL, "issuer", "http://127.0.0.1:5556/dex", "URL of the OpenID Connect issuer.")
 	c.Flags().StringVar(&listen, "listen", "http://127.0.0.1:5555", "HTTP(S) address to listen at.")
 	c.Flags().StringVar(&tlsCert, "tls-cert", "", "X509 cert file to present when serving HTTPS.")
@@ -212,7 +215,7 @@ func main() {
 }
 
 func (a *app) handleIndex(w http.ResponseWriter, r *http.Request) {
-	renderIndex(w)
+	renderIndex(w, a.title)
 }
 
 func (a *app) oauth2Config(scopes []string) *oauth2.Config {
@@ -295,6 +298,8 @@ func (a *app) handleCallback(w http.ResponseWriter, r *http.Request) {
 			RefreshToken: refresh,
 			Expiry:       time.Now().Add(-time.Hour),
 		}
+		auth2ConfigStr, _ := json.Marshal(oauth2Config)
+		log.Printf("auth2Config: %s", (auth2ConfigStr))
 		token, err = oauth2Config.TokenSource(ctx, t).Token()
 	default:
 		http.Error(w, fmt.Sprintf("method not implemented: %s", r.Method), http.StatusBadRequest)
@@ -336,5 +341,5 @@ func (a *app) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renderToken(w, a.redirectURI, rawIDToken, accessToken, token.RefreshToken, buff.String())
+	renderToken(w, a.redirectURI, a.logout, rawIDToken, accessToken, token.RefreshToken, buff.String())
 }
