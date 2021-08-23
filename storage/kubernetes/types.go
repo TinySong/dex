@@ -295,6 +295,7 @@ func toStorageClient(c Client) storage.Client {
 // Claims is a mirrored struct from storage with JSON struct tags.
 type Claims struct {
 	UserID            string   `json:"userID"`
+	Phone             string   `json:"phone"`
 	Username          string   `json:"username"`
 	PreferredUsername string   `json:"preferredUsername"`
 	Email             string   `json:"email"`
@@ -305,6 +306,7 @@ type Claims struct {
 func fromStorageClaims(i storage.Claims) Claims {
 	return Claims{
 		UserID:            i.UserID,
+		Phone:             i.Phone,
 		Username:          i.Username,
 		PreferredUsername: i.PreferredUsername,
 		Email:             i.Email,
@@ -316,6 +318,7 @@ func fromStorageClaims(i storage.Claims) Claims {
 func toStorageClaims(i Claims) storage.Claims {
 	return storage.Claims{
 		UserID:            i.UserID,
+		Phone:             i.Phone,
 		Username:          i.Username,
 		PreferredUsername: i.PreferredUsername,
 		Email:             i.Email,

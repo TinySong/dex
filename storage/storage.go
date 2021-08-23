@@ -173,8 +173,8 @@ type Claims struct {
 	PreferredUsername string
 	Email             string
 	EmailVerified     bool
-
-	Groups []string
+	Phone             string
+	Groups            []string
 }
 
 // PKCE is a container for the data needed to perform Proof Key for Code Exchange (RFC 7636) auth flow

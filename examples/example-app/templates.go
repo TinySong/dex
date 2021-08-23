@@ -8,40 +8,30 @@ import (
 
 var indexTmpl = template.Must(template.New("index.html").Parse(`<html>
   <head>
-    <style>
-form  { display: table;      }
-p     { display: table-row;  }
-label { display: table-cell; }
-input { display: table-cell; }
-    </style>
   </head>
   <body>
-    <form action="/login" method="post">
-      <p>
-        <label> Authenticate for: </label>
-        <input type="text" name="cross_client" placeholder="list of client-ids">
-      </p>
-      <p>
-        <label>Extra scopes: </label>
-        <input type="text" name="extra_scopes" placeholder="list of scopes">
-      </p>
-      <p>
-        <label>Connector ID: </label>
-        <input type="text" name="connector_id" placeholder="connector id">
-      </p>
-      <p>
-        <label>Request offline access: </label>
-        <input type="checkbox" name="offline_access" value="yes" checked>
-      </p>
-      <p>
-	    <input type="submit" value="Login">
-      </p>
+<form action="/login" method="post" style="
+    height: 100%;
+    width: 100%;
+    /* text-align: center; */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;">
+         {{.Title }}
+	    <input type="submit" value="Login" style="
+    margin-top: 16px;">
+      <p></p>
     </form>
   </body>
 </html>`))
 
-func renderIndex(w http.ResponseWriter) {
-	renderTemplate(w, indexTmpl, nil)
+func renderIndex(w http.ResponseWriter, title string) {
+	renderTemplate(w, indexTmpl, LoginTmplData{Title: title})
+}
+
+type LoginTmplData struct {
+	Title string
 }
 
 type tokenTmplData struct {
@@ -49,6 +39,7 @@ type tokenTmplData struct {
 	AccessToken  string
 	RefreshToken string
 	RedirectURL  string
+	Logout       string
 	Claims       string
 }
 
@@ -69,6 +60,13 @@ pre {
     <p> ID Token: <pre><code>{{ .IDToken }}</code></pre></p>
     <p> Access Token: <pre><code>{{ .AccessToken }}</code></pre></p>
     <p> Claims: <pre><code>{{ .Claims }}</code></pre></p>
+
+{{if .Logout }}
+	<form action="{{ .Logout }}" method="GET">
+	  <input type="submit" value="Logout">
+    </form>
+{{ end }}
+
 	{{ if .RefreshToken }}
     <p> Refresh Token: <pre><code>{{ .RefreshToken }}</code></pre></p>
 	<form action="{{ .RedirectURL }}" method="post">
@@ -80,11 +78,12 @@ pre {
 </html>
 `))
 
-func renderToken(w http.ResponseWriter, redirectURL, idToken, accessToken, refreshToken, claims string) {
+func renderToken(w http.ResponseWriter, redirectURL, logout, idToken, accessToken, refreshToken, claims string) {
 	renderTemplate(w, tokenTmpl, tokenTmplData{
 		IDToken:      idToken,
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
+		Logout:       logout,
 		RedirectURL:  redirectURL,
 		Claims:       claims,
 	})

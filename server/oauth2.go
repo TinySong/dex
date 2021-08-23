@@ -276,9 +276,10 @@ type idTokenClaims struct {
 
 	Groups []string `json:"groups,omitempty"`
 
-	Name              string `json:"name,omitempty"`
-	PreferredUsername string `json:"preferred_username,omitempty"`
-
+	Name              string             `json:"name,omitempty"`
+	PreferredUsername string             `json:"preferred_username,omitempty"`
+	Phone             string             `json:"phone"`
+	UserID            string             `json:"userid,omitempty"`
 	FederatedIDClaims *federatedIDClaims `json:"federated_claims,omitempty"`
 }
 
@@ -357,6 +358,8 @@ func (s *Server) newIDToken(clientID string, claims storage.Claims, scopes []str
 			tok.Groups = claims.Groups
 		case scope == scopeProfile:
 			tok.Name = claims.Username
+			tok.UserID = claims.UserID
+			tok.Phone = claims.Phone
 			tok.PreferredUsername = claims.PreferredUsername
 		case scope == scopeFederatedID:
 			tok.FederatedIDClaims = &federatedIDClaims{
@@ -381,7 +384,6 @@ func (s *Server) newIDToken(clientID string, claims storage.Claims, scopes []str
 			tok.Audience = append(tok.Audience, peerID)
 		}
 	}
-
 	if len(tok.Audience) == 0 {
 		// Client didn't ask for cross client audience. Set the current
 		// client as the audience.
