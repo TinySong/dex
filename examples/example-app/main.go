@@ -118,28 +118,11 @@ func cmd() *cobra.Command {
 				return fmt.Errorf("parse listen address: %v", err)
 			}
 
-			if rootCAs != "" {
-				client, err := httpClientForRootCAs(rootCAs)
-				if err != nil {
-					return err
-				}
-				a.client = client
+			a.client = &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
 			}
-
-			if debug {
-				if a.client == nil {
-					a.client = &http.Client{
-						Transport: debugTransport{http.DefaultTransport},
-					}
-				} else {
-					a.client.Transport = debugTransport{a.client.Transport}
-				}
-			}
-
-			if a.client == nil {
-				a.client = http.DefaultClient
-			}
-
 			// TODO(ericchiang): Retry with backoff
 			ctx := oidc.ClientContext(context.Background(), a.client)
 			provider, err := oidc.NewProvider(ctx, issuerURL)
