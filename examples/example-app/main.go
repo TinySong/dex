@@ -14,7 +14,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -122,7 +121,27 @@ func cmd() *cobra.Command {
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 				},
 			}
+<<<<<<< HEAD
 			// TODO(ericchiang): Retry with backoff
+=======
+			if debug {
+				if a.client == nil {
+					a.client = &http.Client{
+						Transport: debugTransport{&http.Transport{
+							TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+						},
+						},
+					}
+				} else {
+					a.client.Transport = debugTransport{a.client.Transport}
+				}
+			}
+
+			if a.client == nil {
+				a.client = http.DefaultClient
+			}
+
+>>>>>>> example app using insecure requests dex server
 			ctx := oidc.ClientContext(context.Background(), a.client)
 			provider, err := oidc.NewProvider(ctx, issuerURL)
 			if err != nil {
@@ -212,35 +231,20 @@ func (a *app) oauth2Config(scopes []string) *oauth2.Config {
 
 func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var scopes []string
-	if extraScopes := r.FormValue("extra_scopes"); extraScopes != "" {
-		scopes = strings.Split(extraScopes, " ")
-	}
-	var clients []string
-	if crossClients := r.FormValue("cross_client"); crossClients != "" {
-		clients = strings.Split(crossClients, " ")
-	}
-	for _, client := range clients {
-		scopes = append(scopes, "audience:server:client_id:"+client)
-	}
-	connectorID := ""
-	if id := r.FormValue("connector_id"); id != "" {
-		connectorID = id
-	}
-
 	authCodeURL := ""
 	scopes = append(scopes, "openid", "profile", "email")
-	if r.FormValue("offline_access") != "yes" {
-		authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState)
-	} else if a.offlineAsScope {
-		scopes = append(scopes, "offline_access")
-		authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState)
-	} else {
-		authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState, oauth2.AccessTypeOffline)
-	}
-	if connectorID != "" {
-		authCodeURL = authCodeURL + "&connector_id=" + connectorID
-	}
+	//  TODO delete offline_access, no return refreshtoken
+	// if r.FormValue("offline_access") != "yes" {
+	// 	authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState)
+	// } else if a.offlineAsScope {
+	// 	scopes = append(scopes, "offline_access")
+	// 	authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState)
+	// } else {
+	// 	authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState, oauth2.AccessTypeOffline)
+	// }
 
+	// TODO: add debug log
+	// TODO: state 作用
 	http.Redirect(w, r, authCodeURL, http.StatusSeeOther)
 }
 
@@ -269,20 +273,21 @@ func (a *app) handleCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		token, err = oauth2Config.Exchange(ctx, code)
-	case http.MethodPost:
-		// Form request from frontend to refresh a token.
-		refresh := r.FormValue("refresh_token")
-		if refresh == "" {
-			http.Error(w, fmt.Sprintf("no refresh_token in request: %q", r.Form), http.StatusBadRequest)
-			return
-		}
-		t := &oauth2.Token{
-			RefreshToken: refresh,
-			Expiry:       time.Now().Add(-time.Hour),
-		}
-		auth2ConfigStr, _ := json.Marshal(oauth2Config)
-		log.Printf("auth2Config: %s", (auth2ConfigStr))
-		token, err = oauth2Config.TokenSource(ctx, t).Token()
+	// // TODO remove post api
+	// case http.MethodPost:
+	// 	// Form request from frontend to refresh a token.
+	// 	refresh := r.FormValue("refresh_token")
+	// 	if refresh == "" {
+	// 		http.Error(w, fmt.Sprintf("no refresh_token in request: %q", r.Form), http.StatusBadRequest)
+	// 		return
+	// 	}
+	// 	t := &oauth2.Token{
+	// 		RefreshToken: refresh,
+	// 		Expiry:       time.Now().Add(-time.Hour),
+	// 	}
+	// 	auth2ConfigStr, _ := json.Marshal(oauth2Config)
+	// 	log.Printf("auth2Config: %s", (auth2ConfigStr))
+	// 	token, err = oauth2Config.TokenSource(ctx, t).Token()
 	default:
 		http.Error(w, fmt.Sprintf("method not implemented: %s", r.Method), http.StatusBadRequest)
 		return
@@ -322,6 +327,6 @@ func (a *app) handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("error indenting ID token claims: %v", err), http.StatusInternalServerError)
 		return
 	}
-
+	//  TODO :grant_types_supported delete
 	renderToken(w, a.redirectURI, a.logout, rawIDToken, accessToken, token.RefreshToken, buff.String())
 }
