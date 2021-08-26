@@ -124,9 +124,6 @@ func cmd() *cobra.Command {
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 				},
 			}
-<<<<<<< HEAD
-			// TODO(ericchiang): Retry with backoff
-=======
 			if debug {
 				if a.client == nil {
 					a.client = &http.Client{
@@ -144,7 +141,6 @@ func cmd() *cobra.Command {
 				a.client = http.DefaultClient
 			}
 
->>>>>>> example app using insecure requests dex server
 			ctx := oidc.ClientContext(context.Background(), a.client)
 			provider, err := oidc.NewProvider(ctx, issuerURL)
 			if err != nil {
@@ -372,8 +368,10 @@ func (a *app) handleCallback(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("expected state %q got %q", exampleAppState, state), http.StatusBadRequest)
 			return
 		}
-		token, err = a.retriveToken(ctx, code)
-		// token, err = oauth2Config.Exchange(ctx, code)
+		
+        token, err = a.retriveToken(ctx, code)
+		
+    // token, err = oauth2Config.Exchange(ctx, code)
 	// // TODO remove post api
 	// case http.MethodPost:
 	// 	// Form request from frontend to refresh a token.

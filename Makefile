@@ -15,7 +15,7 @@ $( shell mkdir -p bin )
 user=$(shell id -u -n)
 group=$(shell id -g -n)
 
-export GOBIN=$(PWD)/bin
+# export GOBIN=$(PWD)/bin
 
 LD_FLAGS="-w -X main.version=$(VERSION)"
 
@@ -47,7 +47,7 @@ bin/grpc-client:
 
 bin/example-app:
 	@mkdir -p bin/
-	@cd examples/ && go install -v -ldflags $(LD_FLAGS) $(REPO_PATH)/examples/example-app
+	@cd examples/ && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go install -v -ldflags $(LD_FLAGS) $(REPO_PATH)/examples/example-app
 
 .PHONY: release-binary
 release-binary: generate
