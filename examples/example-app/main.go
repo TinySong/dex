@@ -369,8 +369,10 @@ func (a *app) handleCallback(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("expected state %q got %q", exampleAppState, state), http.StatusBadRequest)
 			return
 		}
-		token, err = a.retriveToken(ctx, code)
-		// token, err = oauth2Config.Exchange(ctx, code)
+		
+        token, err = a.retriveToken(ctx, code)
+		
+    // token, err = oauth2Config.Exchange(ctx, code)
 	// // TODO remove post api
 	// case http.MethodPost:
 	// 	// Form request from frontend to refresh a token.
