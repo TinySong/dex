@@ -49,6 +49,7 @@ type Config struct {
 
 const (
 	loginURI   = "/oidc/login"
+	logoutURI  = "/logout"
 	sessionURL = "/ui/spi/v2/sessions/query"
 	noLogin    = "not-logged-in"
 	// config through dex config
@@ -199,4 +200,13 @@ func (t *tenxConnector) UserSession(cookie string) error {
 
 func (t *tenxConnector) Redirect() string {
 	return path.Join(t.Config.BaseURL, loginURI)
+}
+
+func (t *tenxConnector) Logout() string {
+	uri, err := url.Parse(t.Config.BaseURL)
+	if err != nil {
+		return ""
+	}
+	uri.Path = path.Join(uri.Path, logoutURI)
+	return uri.String()
 }

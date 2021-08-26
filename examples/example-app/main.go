@@ -8,6 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/spf13/cobra"
+	"golang.org/x/oauth2"
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -15,11 +19,9 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"time"
-
-	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/spf13/cobra"
-	"golang.org/x/oauth2"
 )
 
 const exampleAppState = "I wish to wash my irish wristwatch"
@@ -235,28 +237,125 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	authCodeURL := ""
 	scopes = append(scopes, "openid", "profile", "email")
 	//  TODO delete offline_access, no return refreshtoken
-	// if r.FormValue("offline_access") != "yes" {
-	// 	authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState)
-	// } else if a.offlineAsScope {
-	// 	scopes = append(scopes, "offline_access")
-	// 	authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState)
-	// } else {
-	// 	authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState, oauth2.AccessTypeOffline)
-	// }
+	if r.FormValue("offline_access") != "yes" {
+		authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState)
+	} else if a.offlineAsScope {
+		scopes = append(scopes, "offline_access")
+		authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState)
+	} else {
+		authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState, oauth2.AccessTypeOffline)
+	}
 
 	// TODO: add debug log
 	// TODO: state 作用
 	http.Redirect(w, r, authCodeURL, http.StatusSeeOther)
 }
 
+type expirationTime int32
+
+type tokenJSON struct {
+	AccessToken  string         `json:"access_token"`
+	TokenType    string         `json:"token_type"`
+	RefreshToken string         `json:"refresh_token"`
+	ExpiresIn    expirationTime `json:"expires_in"` // at least PayPal returns string, while most return number
+}
+
+type Token struct {
+	oauth2.Token
+	raw interface{}
+}
+
+func (e *tokenJSON) expiry() (t time.Time) {
+	if v := e.ExpiresIn; v != 0 {
+		return time.Now().Add(time.Duration(v) * time.Second)
+	}
+	return
+}
+func (a *app) retrieveToken(ctx context.Context, code string) (*Token, error) {
+	v := url.Values{
+		"grant_type":   {"authorization_code"},
+		"code":         {code},
+		"redirect_uri": {a.redirectURI},
+	}
+	req, err := http.NewRequest("POST", a.provider.Endpoint().TokenURL, strings.NewReader(v.Encode()))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(url.QueryEscape(a.clientID), url.QueryEscape(a.clientSecret))
+	requestDump, err := httputil.DumpRequest(req, true)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(string(requestDump))
+	client := http.Client{
+		Transport: debugTransport{
+			&http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+		},
+	}
+	r, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1<<20))
+	r.Body.Close()
+	if err != nil {
+		return nil, fmt.Errorf("oauth2: cannot fetch token: %v", err)
+	}
+	var tj tokenJSON
+	if err = json.Unmarshal(body, &tj); err != nil {
+		return nil, err
+	}
+	token := &Token{
+		Token: oauth2.Token{
+			AccessToken:  tj.AccessToken,
+			TokenType:    tj.TokenType,
+			RefreshToken: tj.RefreshToken,
+			Expiry:       tj.expiry(),
+		},
+		raw: make(map[string]interface{}),
+	}
+
+	json.Unmarshal(body, &token.raw)
+	return token, nil
+
+}
+func (t *Token) Extra(key string) interface{} {
+	if raw, ok := t.raw.(map[string]interface{}); ok {
+		return raw[key]
+	}
+
+	vals, ok := t.raw.(url.Values)
+	if !ok {
+		return nil
+	}
+
+	v := vals.Get(key)
+	switch s := strings.TrimSpace(v); strings.Count(s, ".") {
+	case 0: // Contains no "."; try to parse as int
+		if i, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return i
+		}
+	case 1: // Contains a single "."; try to parse as float
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			return f
+		}
+	}
+
+	return v
+}
+
 func (a *app) handleCallback(w http.ResponseWriter, r *http.Request) {
 	var (
 		err   error
-		token *oauth2.Token
+		token *Token
 	)
 
 	ctx := oidc.ClientContext(r.Context(), a.client)
-	oauth2Config := a.oauth2Config(nil)
+	// oauth2Config := a.oauth2Config(nil)
 	switch r.Method {
 	case http.MethodGet:
 		// Authorization redirect callback from OAuth2 auth flow.
@@ -273,7 +372,8 @@ func (a *app) handleCallback(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("expected state %q got %q", exampleAppState, state), http.StatusBadRequest)
 			return
 		}
-		token, err = oauth2Config.Exchange(ctx, code)
+		token, err = a.retriveToken(ctx, code)
+		// token, err = oauth2Config.Exchange(ctx, code)
 	// // TODO remove post api
 	// case http.MethodPost:
 	// 	// Form request from frontend to refresh a token.

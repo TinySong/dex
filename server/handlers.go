@@ -332,6 +332,25 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	connID := mux.Vars(r)["connector"]
+	conn, err := s.getConnector(connID)
+	if err != nil {
+		s.logger.Errorf("Failed to get connector with id %q : %v", connID, err)
+		s.renderError(r, w, http.StatusInternalServerError, "Requested resource does not exist.")
+		return
+	}
+	tenxConn, ok := conn.Connector.(connector.TenxConnector)
+	if !ok {
+		s.logger.Errorf("Expected password connector in handlePasswordLogin(), but got %v", tenxConn)
+		s.renderError(r, w, http.StatusInternalServerError, "Requested resource does not exist.")
+		return
+	}
+	logout := tenxConn.Logout()
+	s.logger.Info(logout)
+	http.Redirect(w, r, logout, http.StatusSeeOther)
+}
+
 func (s *Server) handleCallBack(w http.ResponseWriter, r *http.Request) {
 	authID := r.URL.Query().Get("state")
 	if authID == "" {

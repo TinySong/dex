@@ -52,6 +52,7 @@ type TenxConnector interface {
 	Login(ctx context.Context, s Scopes, cookie string) (identity Identity, err error)
 	CheckCookie([]*http.Cookie) (string, bool)
 	Redirect() string
+	Logout() string
 }
 
 // CallbackConnector is an interface implemented by connectors which use an OAuth
