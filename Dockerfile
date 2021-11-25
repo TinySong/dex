@@ -21,7 +21,7 @@ COPY . .
 
 RUN make release-binary
 
-FROM alpine:3.14.3 AS gomplate
+FROM alpine:3.15.0 AS gomplate
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -34,7 +34,7 @@ RUN wget -O /usr/local/bin/gomplate \
   && chmod +x /usr/local/bin/gomplate
 
 
-FROM alpine:3.14.3
+FROM alpine:3.15.0
 
 # Dex connectors, such as GitHub and Google logins require root certificates.
 # Proper installations should manage those certificates, but it's a bad user
