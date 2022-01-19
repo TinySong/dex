@@ -1,3 +1,5 @@
+ARG BASEIMAGE=alpine:3.15.0
+
 FROM golang:1.17.6-alpine3.14 AS builder
 
 WORKDIR /usr/local/src/dex
@@ -21,6 +23,12 @@ COPY . .
 
 RUN make release-binary
 
+FROM alpine:3.15.0 AS stager
+
+RUN mkdir -p /var/dex
+RUN mkdir -p /etc/dex
+COPY config.docker.yaml /etc/dex/
+
 FROM alpine:3.15.0 AS gomplate
 
 ARG TARGETOS
@@ -34,7 +42,7 @@ RUN wget -O /usr/local/bin/gomplate \
     && chmod +x /usr/local/bin/gomplate
 
 
-FROM alpine:3.15.0
+FROM $BASEIMAGE
 
 # Dex connectors, such as GitHub and Google logins require root certificates.
 # Proper installations should manage those certificates, but it's a bad user
@@ -43,12 +51,8 @@ FROM alpine:3.15.0
 # See https://go.dev/src/crypto/x509/root_linux.go for Go root CA bundle locations.
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-RUN mkdir -p /var/dex
-RUN chown -R 1001:1001 /var/dex
-
-RUN mkdir -p /etc/dex
-COPY config.docker.yaml /etc/dex/
-RUN chown -R 1001:1001 /etc/dex
+COPY --from=stager --chown=1001:1001 /var/dex /var/dex
+COPY --from=stager --chown=1001:1001 /etc/dex /etc/dex
 
 # Copy module files for CVE scanning / dependency analysis.
 COPY --from=builder /usr/local/src/dex/go.mod /usr/local/src/dex/go.sum /usr/local/src/dex/
