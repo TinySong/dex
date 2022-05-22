@@ -6,9 +6,9 @@ PROJ=dex
 ORG_PATH=github.com/dexidp
 REPO_PATH=$(ORG_PATH)/$(PROJ)
 
-VERSION ?= $(shell ./scripts/git-version)
+VERSION ?= v5.6.0
 
-DOCKER_REPO=quay.io/dexidp/dex
+DOCKER_REPO=192.168.1.31:80/system_containers/dex
 DOCKER_IMAGE=$(DOCKER_REPO):$(VERSION)
 
 $( shell mkdir -p bin )
@@ -91,7 +91,7 @@ fix: ## Fix lint violations
 
 .PHONY: docker-image
 docker-image:
-	@sudo docker build -t $(DOCKER_IMAGE) .
+	@docker build --network host -t $(DOCKER_IMAGE) .
 
 .PHONY: verify-proto
 verify-proto: proto

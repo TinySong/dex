@@ -232,8 +232,7 @@ func (a *app) oauth2Config(scopes []string) *oauth2.Config {
 func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var scopes []string
 	authCodeURL := ""
-	scopes = append(scopes, "openid", "profile", "email")
-	//  TODO delete offline_access, no return refreshtoken
+	scopes = append(scopes, "openid", "profile", "email", "groups")
 	if r.FormValue("offline_access") != "yes" {
 		authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState)
 	} else if a.offlineAsScope {
