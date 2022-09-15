@@ -1,0 +1,62 @@
+issuer: https://0.0.0.0:5556
+storage:
+  type: kubernetes
+  config:
+    inCluster: false
+    kubeConfigFile:  /Users/song/.kube/config
+logger:
+  level: debug
+web:
+  https: 0.0.0.0:5556
+  tlsCert: /Users/song/development/golang/src/github.com/dexidp/dex/tls/tls.crt
+  tlsKey: /Users/song/development/golang/src/github.com/dexidp/dex/tls/tls.key
+connectors:
+- type: k8scrd
+  name: k8scrd
+  id: k8scrd
+  config:
+    host: http://0.0.0.0:8080
+    insecureNoSSL: true
+    insecureSkipVerify: true
+    clientCert: ./client.cert
+    clientKey: ./client.key
+- type: ldap
+  name: OpenLDAP
+  id: ldap
+  config:
+    host: https://192.168.1.32:31872
+    insecureNoSSL: false
+    insecureSkipVerify: true
+    bindDN: cn=admin,dc=tenxcloud,dc=com
+    bindPW: Dream001$
+    usernamePrompt: Username
+    userSearch:
+      baseDN: ou=People,dc=tenxcloud,dc=com
+      filter: "(objectClass=person)"
+      username: cn
+      idAttr: DN
+      emailAttr: mail
+      nameAttr: cn
+    groupSearch:
+      baseDN: ou=Groups,dc=tenxcloud,dc=com
+      filter: "(objectClass=groupOfNames)"
+      userMatchers:
+      - userAttr: DN
+        groupAttr: member
+      nameAttr: cn
+oauth2:
+  skipApprovalScreen: true
+staticClients:
+- id: sample-app
+  redirectURIs:
+  - 'http://0.0.0.0:5555/callback'
+  name: sample-app
+  secret: ZXhhbXBsZS1hcHAtc2VjcmV0
+- id: kubernetes
+  redirectURIs:
+  - 'http://localhost:8000'
+  name: kubernetes
+  secret: ZXhhbXBsZS1hcHAtc2VjcmV0
+enablePasswordDB: false
+alwaysShowLoginScreen: false
+staticPasswords: []

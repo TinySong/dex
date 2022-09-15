@@ -8,7 +8,7 @@ REPO_PATH=$(ORG_PATH)/$(PROJ)
 
 VERSION ?= v5.6.0
 
-DOCKER_REPO=192.168.1.31:80/system_containers/dex
+DOCKER_REPO=172.22.50.227/system_containers/dex
 DOCKER_IMAGE=$(DOCKER_REPO):$(VERSION)
 
 $( shell mkdir -p bin )
@@ -48,8 +48,8 @@ bin/example-app:
 .PHONY: release-binary
 release-binary: LD_FLAGS = "-w -X main.version=$(VERSION) -extldflags \"-static\""
 release-binary: generate
-	@go build -o /go/bin/dex -v -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd/dex
-	@go build -o /go/bin/docker-entrypoint -v -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd/docker-entrypoint
+	@GOOS=linux GOARCH=amd64 go build -o /go/bin/dex -v -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd/dex
+	@GOOS=linux GOARCH=amd64 go build -o /go/bin/docker-entrypoint -v -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd/docker-entrypoint
 
 docker-compose.override.yaml:
 	cp docker-compose.override.yaml.dist docker-compose.override.yaml
@@ -91,7 +91,7 @@ fix: ## Fix lint violations
 
 .PHONY: docker-image
 docker-image:
-	@docker build --network host -t $(DOCKER_IMAGE) .
+	@docker build --build-arg TARGETOS=linux --build-arg TARGETARCH=amd64 --network host -t $(DOCKER_IMAGE) .
 
 .PHONY: verify-proto
 verify-proto: proto

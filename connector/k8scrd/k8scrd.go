@@ -1,5 +1,5 @@
 // Package ldap implements strategies for authenticating using the protocol.
-package tenxcrd
+package k8scrd
 
 import (
 	"bytes"
@@ -42,7 +42,7 @@ type Config struct {
 	RootCAData []byte `json:"rootCAData"`
 }
 
-type tenxcrdConnector struct {
+type k8scrdConnector struct {
 	Config
 	logger log.Logger
 }
@@ -76,18 +76,18 @@ type UserResponse struct {
 }
 
 var (
-	_ connector.PasswordConnector = (*tenxcrdConnector)(nil)
-	_ connector.RefreshConnector  = (*tenxcrdConnector)(nil)
+	_ connector.PasswordConnector = (*k8scrdConnector)(nil)
+	_ connector.RefreshConnector  = (*k8scrdConnector)(nil)
 )
 
 func (c *Config) Open(id string, logger log.Logger) (connector.Connector, error) {
-	return &tenxcrdConnector{
+	return &k8scrdConnector{
 		Config: *c,
 		logger: logger,
 	}, nil
 }
 
-func (c *tenxcrdConnector) Login(ctx context.Context, s connector.Scopes, username, passowrd string) (identity connector.Identity, validPass bool, err error) {
+func (c *k8scrdConnector) Login(ctx context.Context, s connector.Scopes, username, passowrd string) (identity connector.Identity, validPass bool, err error) {
 	c.logger.Debugf("userName: %s, password: %s", username, passowrd)
 	if username == "" || passowrd == "" {
 		return identity, false, fmt.Errorf("username or password is nil. username: %s, password: %s", username, passowrd)
@@ -108,7 +108,7 @@ func (c *tenxcrdConnector) Login(ctx context.Context, s connector.Scopes, userna
 	userResp := new(UserResponse)
 	err = json.Unmarshal(data, &userResp)
 	if err != nil {
-		return identity, false, fmt.Errorf("tenxcrd: invalid response: %v", err)
+		return identity, false, fmt.Errorf("k8scrd: invalid response: %v", err)
 	}
 
 	identity.Username = userResp.Name
@@ -123,28 +123,28 @@ func (c *tenxcrdConnector) Login(ctx context.Context, s connector.Scopes, userna
 	identity.Groups = userResp.Groups
 	return identity, true, nil
 }
-func (c *tenxcrdConnector) Prompt() string {
-	return "tenxcrd"
+func (c *k8scrdConnector) Prompt() string {
+	return "k8scrd"
 }
 
-func (c *tenxcrdConnector) Refresh(ctx context.Context, s connector.Scopes, identity connector.Identity) (connector.Identity, error) {
+func (c *k8scrdConnector) Refresh(ctx context.Context, s connector.Scopes, identity connector.Identity) (connector.Identity, error) {
 	fmt.Println(identity)
 	return identity, nil
 }
 
-func (c *tenxcrdConnector) getRespose(ctx context.Context, username, pass string) (response *http.Response, err error) {
+func (c *k8scrdConnector) getRespose(ctx context.Context, username, pass string) (response *http.Response, err error) {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: c.InsecureSkipVerify}
 	if c.RootCA != "" || len(c.RootCAData) != 0 {
 		data := c.RootCAData
 		if len(data) == 0 {
 			if data, err = os.ReadFile(c.RootCA); err != nil {
-				return nil, fmt.Errorf("tenxcrd: read ca file: %v", err)
+				return nil, fmt.Errorf("k8scrd: read ca file: %v", err)
 			}
 		}
 		rootCAs := x509.NewCertPool()
 		if !rootCAs.AppendCertsFromPEM(data) {
-			return nil, fmt.Errorf("tenxcrd: no certs found in ca file")
+			return nil, fmt.Errorf("k8scrd: no certs found in ca file")
 		}
 	}
 	if c.ClientKey != "" && c.ClientCert != "" {

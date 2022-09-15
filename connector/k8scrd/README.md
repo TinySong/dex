@@ -41,7 +41,7 @@ claims:
   preferredUsername: ''
   email: ''
   emailVerified: false
-connectorID: tenxcrd
+connectorID: k8scrd
 expiry: '2022-05-24T07:46:39.304739Z'
 code_challenge_method: plain
 ```
@@ -70,7 +70,7 @@ claims:
   preferredUsername: ''
   email: ''
   emailVerified: false
-connectorID: tenxcrd
+connectorID: k8scrd
 expiry: '2022-05-24T08:22:56.833702Z'
 code_challenge_method: plain
 
