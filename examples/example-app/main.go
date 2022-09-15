@@ -8,9 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/spf13/cobra"
-	"golang.org/x/oauth2"
 	"io"
 	"io/ioutil"
 	"log"
@@ -22,6 +19,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/spf13/cobra"
+	"golang.org/x/oauth2"
 )
 
 const exampleAppState = "I wish to wash my irish wristwatch"
@@ -45,7 +46,7 @@ type app struct {
 // return an HTTP client which trusts the provided root CAs.
 func httpClientForRootCAs(rootCAs string) (*http.Client, error) {
 	tlsConfig := tls.Config{RootCAs: x509.NewCertPool()}
-	rootCABytes, err := ioutil.ReadFile(rootCAs)
+	rootCABytes, err := os.ReadFile(rootCAs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read root-ca: %v", err)
 	}
@@ -231,8 +232,7 @@ func (a *app) oauth2Config(scopes []string) *oauth2.Config {
 func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var scopes []string
 	authCodeURL := ""
-	scopes = append(scopes, "openid", "profile", "email")
-	//  TODO delete offline_access, no return refreshtoken
+	scopes = append(scopes, "openid", "profile", "email", "groups")
 	if r.FormValue("offline_access") != "yes" {
 		authCodeURL = a.oauth2Config(scopes).AuthCodeURL(exampleAppState)
 	} else if a.offlineAsScope {
@@ -368,10 +368,10 @@ func (a *app) handleCallback(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("expected state %q got %q", exampleAppState, state), http.StatusBadRequest)
 			return
 		}
-		
-        token, err = a.retriveToken(ctx, code)
-		
-    // token, err = oauth2Config.Exchange(ctx, code)
+
+		token, err = a.retriveToken(ctx, code)
+
+		// token, err = oauth2Config.Exchange(ctx, code)
 	// // TODO remove post api
 	// case http.MethodPost:
 	// 	// Form request from frontend to refresh a token.

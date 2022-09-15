@@ -106,7 +106,7 @@ func (dtq *DeviceTokenQuery) FirstIDX(ctx context.Context) int {
 }
 
 // Only returns a single DeviceToken entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when exactly one DeviceToken entity is not found.
+// Returns a *NotSingularError when more than one DeviceToken entity is found.
 // Returns a *NotFoundError when no DeviceToken entities are found.
 func (dtq *DeviceTokenQuery) Only(ctx context.Context) (*DeviceToken, error) {
 	nodes, err := dtq.Limit(2).All(ctx)
@@ -133,7 +133,7 @@ func (dtq *DeviceTokenQuery) OnlyX(ctx context.Context) *DeviceToken {
 }
 
 // OnlyID is like Only, but returns the only DeviceToken ID in the query.
-// Returns a *NotSingularError when exactly one DeviceToken ID is not found.
+// Returns a *NotSingularError when more than one DeviceToken ID is found.
 // Returns a *NotFoundError when no entities are found.
 func (dtq *DeviceTokenQuery) OnlyID(ctx context.Context) (id int, err error) {
 	var ids []int
@@ -242,8 +242,9 @@ func (dtq *DeviceTokenQuery) Clone() *DeviceTokenQuery {
 		order:      append([]OrderFunc{}, dtq.order...),
 		predicates: append([]predicate.DeviceToken{}, dtq.predicates...),
 		// clone intermediate query.
-		sql:  dtq.sql.Clone(),
-		path: dtq.path,
+		sql:    dtq.sql.Clone(),
+		path:   dtq.path,
+		unique: dtq.unique,
 	}
 }
 
@@ -287,8 +288,8 @@ func (dtq *DeviceTokenQuery) GroupBy(field string, fields ...string) *DeviceToke
 //		Select(devicetoken.FieldDeviceCode).
 //		Scan(ctx, &v)
 //
-func (dtq *DeviceTokenQuery) Select(field string, fields ...string) *DeviceTokenSelect {
-	dtq.fields = append([]string{field}, fields...)
+func (dtq *DeviceTokenQuery) Select(fields ...string) *DeviceTokenSelect {
+	dtq.fields = append(dtq.fields, fields...)
 	return &DeviceTokenSelect{DeviceTokenQuery: dtq}
 }
 
@@ -336,6 +337,10 @@ func (dtq *DeviceTokenQuery) sqlAll(ctx context.Context) ([]*DeviceToken, error)
 
 func (dtq *DeviceTokenQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := dtq.querySpec()
+	_spec.Node.Columns = dtq.fields
+	if len(dtq.fields) > 0 {
+		_spec.Unique = dtq.unique != nil && *dtq.unique
+	}
 	return sqlgraph.CountNodes(ctx, dtq.driver, _spec)
 }
 
@@ -398,10 +403,17 @@ func (dtq *DeviceTokenQuery) querySpec() *sqlgraph.QuerySpec {
 func (dtq *DeviceTokenQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(dtq.driver.Dialect())
 	t1 := builder.Table(devicetoken.Table)
-	selector := builder.Select(t1.Columns(devicetoken.Columns...)...).From(t1)
+	columns := dtq.fields
+	if len(columns) == 0 {
+		columns = devicetoken.Columns
+	}
+	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if dtq.sql != nil {
 		selector = dtq.sql
-		selector.Select(selector.Columns(devicetoken.Columns...)...)
+		selector.Select(selector.Columns(columns...)...)
+	}
+	if dtq.unique != nil && *dtq.unique {
+		selector.Distinct()
 	}
 	for _, p := range dtq.predicates {
 		p(selector)
@@ -669,13 +681,22 @@ func (dtgb *DeviceTokenGroupBy) sqlScan(ctx context.Context, v interface{}) erro
 }
 
 func (dtgb *DeviceTokenGroupBy) sqlQuery() *sql.Selector {
-	selector := dtgb.sql
-	columns := make([]string, 0, len(dtgb.fields)+len(dtgb.fns))
-	columns = append(columns, dtgb.fields...)
+	selector := dtgb.sql.Select()
+	aggregation := make([]string, 0, len(dtgb.fns))
 	for _, fn := range dtgb.fns {
-		columns = append(columns, fn(selector))
+		aggregation = append(aggregation, fn(selector))
 	}
-	return selector.Select(columns...).GroupBy(dtgb.fields...)
+	// If no columns were selected in a custom aggregation function, the default
+	// selection is the fields used for "group-by", and the aggregation functions.
+	if len(selector.SelectedColumns()) == 0 {
+		columns := make([]string, 0, len(dtgb.fields)+len(dtgb.fns))
+		for _, f := range dtgb.fields {
+			columns = append(columns, selector.C(f))
+		}
+		columns = append(columns, aggregation...)
+		selector.Select(columns...)
+	}
+	return selector.GroupBy(selector.Columns(dtgb.fields...)...)
 }
 
 // DeviceTokenSelect is the builder for selecting fields of DeviceToken entities.
@@ -891,16 +912,10 @@ func (dts *DeviceTokenSelect) BoolX(ctx context.Context) bool {
 
 func (dts *DeviceTokenSelect) sqlScan(ctx context.Context, v interface{}) error {
 	rows := &sql.Rows{}
-	query, args := dts.sqlQuery().Query()
+	query, args := dts.sql.Query()
 	if err := dts.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
 	defer rows.Close()
 	return sql.ScanSlice(rows, v)
-}
-
-func (dts *DeviceTokenSelect) sqlQuery() sql.Querier {
-	selector := dts.sql
-	selector.Select(selector.Columns(dts.fields...)...)
-	return selector
 }

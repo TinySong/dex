@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -21,9 +22,9 @@ type DeviceRequestUpdate struct {
 	mutation *DeviceRequestMutation
 }
 
-// Where adds a new predicate for the DeviceRequestUpdate builder.
+// Where appends a list predicates to the DeviceRequestUpdate builder.
 func (dru *DeviceRequestUpdate) Where(ps ...predicate.DeviceRequest) *DeviceRequestUpdate {
-	dru.mutation.predicates = append(dru.mutation.predicates, ps...)
+	dru.mutation.Where(ps...)
 	return dru
 }
 
@@ -100,6 +101,9 @@ func (dru *DeviceRequestUpdate) Save(ctx context.Context) (int, error) {
 			return affected, err
 		})
 		for i := len(dru.hooks) - 1; i >= 0; i-- {
+			if dru.hooks[i] == nil {
+				return 0, fmt.Errorf("db: uninitialized hook (forgotten import db/runtime?)")
+			}
 			mut = dru.hooks[i](mut)
 		}
 		if _, err := mut.Mutate(ctx, dru.mutation); err != nil {
@@ -135,22 +139,22 @@ func (dru *DeviceRequestUpdate) ExecX(ctx context.Context) {
 func (dru *DeviceRequestUpdate) check() error {
 	if v, ok := dru.mutation.UserCode(); ok {
 		if err := devicerequest.UserCodeValidator(v); err != nil {
-			return &ValidationError{Name: "user_code", err: fmt.Errorf("db: validator failed for field \"user_code\": %w", err)}
+			return &ValidationError{Name: "user_code", err: fmt.Errorf(`db: validator failed for field "DeviceRequest.user_code": %w`, err)}
 		}
 	}
 	if v, ok := dru.mutation.DeviceCode(); ok {
 		if err := devicerequest.DeviceCodeValidator(v); err != nil {
-			return &ValidationError{Name: "device_code", err: fmt.Errorf("db: validator failed for field \"device_code\": %w", err)}
+			return &ValidationError{Name: "device_code", err: fmt.Errorf(`db: validator failed for field "DeviceRequest.device_code": %w`, err)}
 		}
 	}
 	if v, ok := dru.mutation.ClientID(); ok {
 		if err := devicerequest.ClientIDValidator(v); err != nil {
-			return &ValidationError{Name: "client_id", err: fmt.Errorf("db: validator failed for field \"client_id\": %w", err)}
+			return &ValidationError{Name: "client_id", err: fmt.Errorf(`db: validator failed for field "DeviceRequest.client_id": %w`, err)}
 		}
 	}
 	if v, ok := dru.mutation.ClientSecret(); ok {
 		if err := devicerequest.ClientSecretValidator(v); err != nil {
-			return &ValidationError{Name: "client_secret", err: fmt.Errorf("db: validator failed for field \"client_secret\": %w", err)}
+			return &ValidationError{Name: "client_secret", err: fmt.Errorf(`db: validator failed for field "DeviceRequest.client_secret": %w`, err)}
 		}
 	}
 	return nil
@@ -225,8 +229,8 @@ func (dru *DeviceRequestUpdate) sqlSave(ctx context.Context) (n int, err error) 
 	if n, err = sqlgraph.UpdateNodes(ctx, dru.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{devicerequest.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
-			err = cerr
+		} else if sqlgraph.IsConstraintError(err) {
+			err = &ConstraintError{err.Error(), err}
 		}
 		return 0, err
 	}
@@ -321,6 +325,9 @@ func (druo *DeviceRequestUpdateOne) Save(ctx context.Context) (*DeviceRequest, e
 			return node, err
 		})
 		for i := len(druo.hooks) - 1; i >= 0; i-- {
+			if druo.hooks[i] == nil {
+				return nil, fmt.Errorf("db: uninitialized hook (forgotten import db/runtime?)")
+			}
 			mut = druo.hooks[i](mut)
 		}
 		if _, err := mut.Mutate(ctx, druo.mutation); err != nil {
@@ -356,22 +363,22 @@ func (druo *DeviceRequestUpdateOne) ExecX(ctx context.Context) {
 func (druo *DeviceRequestUpdateOne) check() error {
 	if v, ok := druo.mutation.UserCode(); ok {
 		if err := devicerequest.UserCodeValidator(v); err != nil {
-			return &ValidationError{Name: "user_code", err: fmt.Errorf("db: validator failed for field \"user_code\": %w", err)}
+			return &ValidationError{Name: "user_code", err: fmt.Errorf(`db: validator failed for field "DeviceRequest.user_code": %w`, err)}
 		}
 	}
 	if v, ok := druo.mutation.DeviceCode(); ok {
 		if err := devicerequest.DeviceCodeValidator(v); err != nil {
-			return &ValidationError{Name: "device_code", err: fmt.Errorf("db: validator failed for field \"device_code\": %w", err)}
+			return &ValidationError{Name: "device_code", err: fmt.Errorf(`db: validator failed for field "DeviceRequest.device_code": %w`, err)}
 		}
 	}
 	if v, ok := druo.mutation.ClientID(); ok {
 		if err := devicerequest.ClientIDValidator(v); err != nil {
-			return &ValidationError{Name: "client_id", err: fmt.Errorf("db: validator failed for field \"client_id\": %w", err)}
+			return &ValidationError{Name: "client_id", err: fmt.Errorf(`db: validator failed for field "DeviceRequest.client_id": %w`, err)}
 		}
 	}
 	if v, ok := druo.mutation.ClientSecret(); ok {
 		if err := devicerequest.ClientSecretValidator(v); err != nil {
-			return &ValidationError{Name: "client_secret", err: fmt.Errorf("db: validator failed for field \"client_secret\": %w", err)}
+			return &ValidationError{Name: "client_secret", err: fmt.Errorf(`db: validator failed for field "DeviceRequest.client_secret": %w`, err)}
 		}
 	}
 	return nil
@@ -390,7 +397,7 @@ func (druo *DeviceRequestUpdateOne) sqlSave(ctx context.Context) (_node *DeviceR
 	}
 	id, ok := druo.mutation.ID()
 	if !ok {
-		return nil, &ValidationError{Name: "ID", err: fmt.Errorf("missing DeviceRequest.ID for update")}
+		return nil, &ValidationError{Name: "id", err: errors.New(`db: missing "DeviceRequest.id" for update`)}
 	}
 	_spec.Node.ID.Value = id
 	if fields := druo.fields; len(fields) > 0 {
@@ -466,8 +473,8 @@ func (druo *DeviceRequestUpdateOne) sqlSave(ctx context.Context) (_node *DeviceR
 	if err = sqlgraph.UpdateNode(ctx, druo.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{devicerequest.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
-			err = cerr
+		} else if sqlgraph.IsConstraintError(err) {
+			err = &ConstraintError{err.Error(), err}
 		}
 		return nil, err
 	}

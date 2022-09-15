@@ -106,7 +106,7 @@ func (acq *AuthCodeQuery) FirstIDX(ctx context.Context) string {
 }
 
 // Only returns a single AuthCode entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when exactly one AuthCode entity is not found.
+// Returns a *NotSingularError when more than one AuthCode entity is found.
 // Returns a *NotFoundError when no AuthCode entities are found.
 func (acq *AuthCodeQuery) Only(ctx context.Context) (*AuthCode, error) {
 	nodes, err := acq.Limit(2).All(ctx)
@@ -133,7 +133,7 @@ func (acq *AuthCodeQuery) OnlyX(ctx context.Context) *AuthCode {
 }
 
 // OnlyID is like Only, but returns the only AuthCode ID in the query.
-// Returns a *NotSingularError when exactly one AuthCode ID is not found.
+// Returns a *NotSingularError when more than one AuthCode ID is found.
 // Returns a *NotFoundError when no entities are found.
 func (acq *AuthCodeQuery) OnlyID(ctx context.Context) (id string, err error) {
 	var ids []string
@@ -242,8 +242,9 @@ func (acq *AuthCodeQuery) Clone() *AuthCodeQuery {
 		order:      append([]OrderFunc{}, acq.order...),
 		predicates: append([]predicate.AuthCode{}, acq.predicates...),
 		// clone intermediate query.
-		sql:  acq.sql.Clone(),
-		path: acq.path,
+		sql:    acq.sql.Clone(),
+		path:   acq.path,
+		unique: acq.unique,
 	}
 }
 
@@ -287,8 +288,8 @@ func (acq *AuthCodeQuery) GroupBy(field string, fields ...string) *AuthCodeGroup
 //		Select(authcode.FieldClientID).
 //		Scan(ctx, &v)
 //
-func (acq *AuthCodeQuery) Select(field string, fields ...string) *AuthCodeSelect {
-	acq.fields = append([]string{field}, fields...)
+func (acq *AuthCodeQuery) Select(fields ...string) *AuthCodeSelect {
+	acq.fields = append(acq.fields, fields...)
 	return &AuthCodeSelect{AuthCodeQuery: acq}
 }
 
@@ -336,6 +337,10 @@ func (acq *AuthCodeQuery) sqlAll(ctx context.Context) ([]*AuthCode, error) {
 
 func (acq *AuthCodeQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := acq.querySpec()
+	_spec.Node.Columns = acq.fields
+	if len(acq.fields) > 0 {
+		_spec.Unique = acq.unique != nil && *acq.unique
+	}
 	return sqlgraph.CountNodes(ctx, acq.driver, _spec)
 }
 
@@ -398,10 +403,17 @@ func (acq *AuthCodeQuery) querySpec() *sqlgraph.QuerySpec {
 func (acq *AuthCodeQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(acq.driver.Dialect())
 	t1 := builder.Table(authcode.Table)
-	selector := builder.Select(t1.Columns(authcode.Columns...)...).From(t1)
+	columns := acq.fields
+	if len(columns) == 0 {
+		columns = authcode.Columns
+	}
+	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if acq.sql != nil {
 		selector = acq.sql
-		selector.Select(selector.Columns(authcode.Columns...)...)
+		selector.Select(selector.Columns(columns...)...)
+	}
+	if acq.unique != nil && *acq.unique {
+		selector.Distinct()
 	}
 	for _, p := range acq.predicates {
 		p(selector)
@@ -669,13 +681,22 @@ func (acgb *AuthCodeGroupBy) sqlScan(ctx context.Context, v interface{}) error {
 }
 
 func (acgb *AuthCodeGroupBy) sqlQuery() *sql.Selector {
-	selector := acgb.sql
-	columns := make([]string, 0, len(acgb.fields)+len(acgb.fns))
-	columns = append(columns, acgb.fields...)
+	selector := acgb.sql.Select()
+	aggregation := make([]string, 0, len(acgb.fns))
 	for _, fn := range acgb.fns {
-		columns = append(columns, fn(selector))
+		aggregation = append(aggregation, fn(selector))
 	}
-	return selector.Select(columns...).GroupBy(acgb.fields...)
+	// If no columns were selected in a custom aggregation function, the default
+	// selection is the fields used for "group-by", and the aggregation functions.
+	if len(selector.SelectedColumns()) == 0 {
+		columns := make([]string, 0, len(acgb.fields)+len(acgb.fns))
+		for _, f := range acgb.fields {
+			columns = append(columns, selector.C(f))
+		}
+		columns = append(columns, aggregation...)
+		selector.Select(columns...)
+	}
+	return selector.GroupBy(selector.Columns(acgb.fields...)...)
 }
 
 // AuthCodeSelect is the builder for selecting fields of AuthCode entities.
@@ -891,16 +912,10 @@ func (acs *AuthCodeSelect) BoolX(ctx context.Context) bool {
 
 func (acs *AuthCodeSelect) sqlScan(ctx context.Context, v interface{}) error {
 	rows := &sql.Rows{}
-	query, args := acs.sqlQuery().Query()
+	query, args := acs.sql.Query()
 	if err := acs.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
 	defer rows.Close()
 	return sql.ScanSlice(rows, v)
-}
-
-func (acs *AuthCodeSelect) sqlQuery() sql.Querier {
-	selector := acs.sql
-	selector.Select(selector.Columns(acs.fields...)...)
-	return selector
 }

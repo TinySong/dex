@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"entgo.io/ent/dialect/sql"
@@ -20,9 +21,9 @@ type OfflineSessionUpdate struct {
 	mutation *OfflineSessionMutation
 }
 
-// Where adds a new predicate for the OfflineSessionUpdate builder.
+// Where appends a list predicates to the OfflineSessionUpdate builder.
 func (osu *OfflineSessionUpdate) Where(ps ...predicate.OfflineSession) *OfflineSessionUpdate {
-	osu.mutation.predicates = append(osu.mutation.predicates, ps...)
+	osu.mutation.Where(ps...)
 	return osu
 }
 
@@ -87,6 +88,9 @@ func (osu *OfflineSessionUpdate) Save(ctx context.Context) (int, error) {
 			return affected, err
 		})
 		for i := len(osu.hooks) - 1; i >= 0; i-- {
+			if osu.hooks[i] == nil {
+				return 0, fmt.Errorf("db: uninitialized hook (forgotten import db/runtime?)")
+			}
 			mut = osu.hooks[i](mut)
 		}
 		if _, err := mut.Mutate(ctx, osu.mutation); err != nil {
@@ -122,12 +126,12 @@ func (osu *OfflineSessionUpdate) ExecX(ctx context.Context) {
 func (osu *OfflineSessionUpdate) check() error {
 	if v, ok := osu.mutation.UserID(); ok {
 		if err := offlinesession.UserIDValidator(v); err != nil {
-			return &ValidationError{Name: "user_id", err: fmt.Errorf("db: validator failed for field \"user_id\": %w", err)}
+			return &ValidationError{Name: "user_id", err: fmt.Errorf(`db: validator failed for field "OfflineSession.user_id": %w`, err)}
 		}
 	}
 	if v, ok := osu.mutation.ConnID(); ok {
 		if err := offlinesession.ConnIDValidator(v); err != nil {
-			return &ValidationError{Name: "conn_id", err: fmt.Errorf("db: validator failed for field \"conn_id\": %w", err)}
+			return &ValidationError{Name: "conn_id", err: fmt.Errorf(`db: validator failed for field "OfflineSession.conn_id": %w`, err)}
 		}
 	}
 	return nil
@@ -188,8 +192,8 @@ func (osu *OfflineSessionUpdate) sqlSave(ctx context.Context) (n int, err error)
 	if n, err = sqlgraph.UpdateNodes(ctx, osu.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{offlinesession.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
-			err = cerr
+		} else if sqlgraph.IsConstraintError(err) {
+			err = &ConstraintError{err.Error(), err}
 		}
 		return 0, err
 	}
@@ -272,6 +276,9 @@ func (osuo *OfflineSessionUpdateOne) Save(ctx context.Context) (*OfflineSession,
 			return node, err
 		})
 		for i := len(osuo.hooks) - 1; i >= 0; i-- {
+			if osuo.hooks[i] == nil {
+				return nil, fmt.Errorf("db: uninitialized hook (forgotten import db/runtime?)")
+			}
 			mut = osuo.hooks[i](mut)
 		}
 		if _, err := mut.Mutate(ctx, osuo.mutation); err != nil {
@@ -307,12 +314,12 @@ func (osuo *OfflineSessionUpdateOne) ExecX(ctx context.Context) {
 func (osuo *OfflineSessionUpdateOne) check() error {
 	if v, ok := osuo.mutation.UserID(); ok {
 		if err := offlinesession.UserIDValidator(v); err != nil {
-			return &ValidationError{Name: "user_id", err: fmt.Errorf("db: validator failed for field \"user_id\": %w", err)}
+			return &ValidationError{Name: "user_id", err: fmt.Errorf(`db: validator failed for field "OfflineSession.user_id": %w`, err)}
 		}
 	}
 	if v, ok := osuo.mutation.ConnID(); ok {
 		if err := offlinesession.ConnIDValidator(v); err != nil {
-			return &ValidationError{Name: "conn_id", err: fmt.Errorf("db: validator failed for field \"conn_id\": %w", err)}
+			return &ValidationError{Name: "conn_id", err: fmt.Errorf(`db: validator failed for field "OfflineSession.conn_id": %w`, err)}
 		}
 	}
 	return nil
@@ -331,7 +338,7 @@ func (osuo *OfflineSessionUpdateOne) sqlSave(ctx context.Context) (_node *Offlin
 	}
 	id, ok := osuo.mutation.ID()
 	if !ok {
-		return nil, &ValidationError{Name: "ID", err: fmt.Errorf("missing OfflineSession.ID for update")}
+		return nil, &ValidationError{Name: "id", err: errors.New(`db: missing "OfflineSession.id" for update`)}
 	}
 	_spec.Node.ID.Value = id
 	if fields := osuo.fields; len(fields) > 0 {
@@ -393,8 +400,8 @@ func (osuo *OfflineSessionUpdateOne) sqlSave(ctx context.Context) (_node *Offlin
 	if err = sqlgraph.UpdateNode(ctx, osuo.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{offlinesession.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
-			err = cerr
+		} else if sqlgraph.IsConstraintError(err) {
+			err = &ConstraintError{err.Error(), err}
 		}
 		return nil, err
 	}

@@ -106,7 +106,7 @@ func (kq *KeysQuery) FirstIDX(ctx context.Context) string {
 }
 
 // Only returns a single Keys entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when exactly one Keys entity is not found.
+// Returns a *NotSingularError when more than one Keys entity is found.
 // Returns a *NotFoundError when no Keys entities are found.
 func (kq *KeysQuery) Only(ctx context.Context) (*Keys, error) {
 	nodes, err := kq.Limit(2).All(ctx)
@@ -133,7 +133,7 @@ func (kq *KeysQuery) OnlyX(ctx context.Context) *Keys {
 }
 
 // OnlyID is like Only, but returns the only Keys ID in the query.
-// Returns a *NotSingularError when exactly one Keys ID is not found.
+// Returns a *NotSingularError when more than one Keys ID is found.
 // Returns a *NotFoundError when no entities are found.
 func (kq *KeysQuery) OnlyID(ctx context.Context) (id string, err error) {
 	var ids []string
@@ -242,8 +242,9 @@ func (kq *KeysQuery) Clone() *KeysQuery {
 		order:      append([]OrderFunc{}, kq.order...),
 		predicates: append([]predicate.Keys{}, kq.predicates...),
 		// clone intermediate query.
-		sql:  kq.sql.Clone(),
-		path: kq.path,
+		sql:    kq.sql.Clone(),
+		path:   kq.path,
+		unique: kq.unique,
 	}
 }
 
@@ -287,8 +288,8 @@ func (kq *KeysQuery) GroupBy(field string, fields ...string) *KeysGroupBy {
 //		Select(keys.FieldVerificationKeys).
 //		Scan(ctx, &v)
 //
-func (kq *KeysQuery) Select(field string, fields ...string) *KeysSelect {
-	kq.fields = append([]string{field}, fields...)
+func (kq *KeysQuery) Select(fields ...string) *KeysSelect {
+	kq.fields = append(kq.fields, fields...)
 	return &KeysSelect{KeysQuery: kq}
 }
 
@@ -336,6 +337,10 @@ func (kq *KeysQuery) sqlAll(ctx context.Context) ([]*Keys, error) {
 
 func (kq *KeysQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := kq.querySpec()
+	_spec.Node.Columns = kq.fields
+	if len(kq.fields) > 0 {
+		_spec.Unique = kq.unique != nil && *kq.unique
+	}
 	return sqlgraph.CountNodes(ctx, kq.driver, _spec)
 }
 
@@ -398,10 +403,17 @@ func (kq *KeysQuery) querySpec() *sqlgraph.QuerySpec {
 func (kq *KeysQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(kq.driver.Dialect())
 	t1 := builder.Table(keys.Table)
-	selector := builder.Select(t1.Columns(keys.Columns...)...).From(t1)
+	columns := kq.fields
+	if len(columns) == 0 {
+		columns = keys.Columns
+	}
+	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if kq.sql != nil {
 		selector = kq.sql
-		selector.Select(selector.Columns(keys.Columns...)...)
+		selector.Select(selector.Columns(columns...)...)
+	}
+	if kq.unique != nil && *kq.unique {
+		selector.Distinct()
 	}
 	for _, p := range kq.predicates {
 		p(selector)
@@ -669,13 +681,22 @@ func (kgb *KeysGroupBy) sqlScan(ctx context.Context, v interface{}) error {
 }
 
 func (kgb *KeysGroupBy) sqlQuery() *sql.Selector {
-	selector := kgb.sql
-	columns := make([]string, 0, len(kgb.fields)+len(kgb.fns))
-	columns = append(columns, kgb.fields...)
+	selector := kgb.sql.Select()
+	aggregation := make([]string, 0, len(kgb.fns))
 	for _, fn := range kgb.fns {
-		columns = append(columns, fn(selector))
+		aggregation = append(aggregation, fn(selector))
 	}
-	return selector.Select(columns...).GroupBy(kgb.fields...)
+	// If no columns were selected in a custom aggregation function, the default
+	// selection is the fields used for "group-by", and the aggregation functions.
+	if len(selector.SelectedColumns()) == 0 {
+		columns := make([]string, 0, len(kgb.fields)+len(kgb.fns))
+		for _, f := range kgb.fields {
+			columns = append(columns, selector.C(f))
+		}
+		columns = append(columns, aggregation...)
+		selector.Select(columns...)
+	}
+	return selector.GroupBy(selector.Columns(kgb.fields...)...)
 }
 
 // KeysSelect is the builder for selecting fields of Keys entities.
@@ -891,16 +912,10 @@ func (ks *KeysSelect) BoolX(ctx context.Context) bool {
 
 func (ks *KeysSelect) sqlScan(ctx context.Context, v interface{}) error {
 	rows := &sql.Rows{}
-	query, args := ks.sqlQuery().Query()
+	query, args := ks.sql.Query()
 	if err := ks.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
 	defer rows.Close()
 	return sql.ScanSlice(rows, v)
-}
-
-func (ks *KeysSelect) sqlQuery() sql.Querier {
-	selector := ks.sql
-	selector.Select(selector.Columns(ks.fields...)...)
-	return selector
 }

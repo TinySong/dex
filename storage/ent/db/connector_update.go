@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"entgo.io/ent/dialect/sql"
@@ -20,9 +21,9 @@ type ConnectorUpdate struct {
 	mutation *ConnectorMutation
 }
 
-// Where adds a new predicate for the ConnectorUpdate builder.
+// Where appends a list predicates to the ConnectorUpdate builder.
 func (cu *ConnectorUpdate) Where(ps ...predicate.Connector) *ConnectorUpdate {
-	cu.mutation.predicates = append(cu.mutation.predicates, ps...)
+	cu.mutation.Where(ps...)
 	return cu
 }
 
@@ -81,6 +82,9 @@ func (cu *ConnectorUpdate) Save(ctx context.Context) (int, error) {
 			return affected, err
 		})
 		for i := len(cu.hooks) - 1; i >= 0; i-- {
+			if cu.hooks[i] == nil {
+				return 0, fmt.Errorf("db: uninitialized hook (forgotten import db/runtime?)")
+			}
 			mut = cu.hooks[i](mut)
 		}
 		if _, err := mut.Mutate(ctx, cu.mutation); err != nil {
@@ -116,12 +120,12 @@ func (cu *ConnectorUpdate) ExecX(ctx context.Context) {
 func (cu *ConnectorUpdate) check() error {
 	if v, ok := cu.mutation.GetType(); ok {
 		if err := connector.TypeValidator(v); err != nil {
-			return &ValidationError{Name: "type", err: fmt.Errorf("db: validator failed for field \"type\": %w", err)}
+			return &ValidationError{Name: "type", err: fmt.Errorf(`db: validator failed for field "Connector.type": %w`, err)}
 		}
 	}
 	if v, ok := cu.mutation.Name(); ok {
 		if err := connector.NameValidator(v); err != nil {
-			return &ValidationError{Name: "name", err: fmt.Errorf("db: validator failed for field \"name\": %w", err)}
+			return &ValidationError{Name: "name", err: fmt.Errorf(`db: validator failed for field "Connector.name": %w`, err)}
 		}
 	}
 	return nil
@@ -176,8 +180,8 @@ func (cu *ConnectorUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if n, err = sqlgraph.UpdateNodes(ctx, cu.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{connector.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
-			err = cerr
+		} else if sqlgraph.IsConstraintError(err) {
+			err = &ConstraintError{err.Error(), err}
 		}
 		return 0, err
 	}
@@ -254,6 +258,9 @@ func (cuo *ConnectorUpdateOne) Save(ctx context.Context) (*Connector, error) {
 			return node, err
 		})
 		for i := len(cuo.hooks) - 1; i >= 0; i-- {
+			if cuo.hooks[i] == nil {
+				return nil, fmt.Errorf("db: uninitialized hook (forgotten import db/runtime?)")
+			}
 			mut = cuo.hooks[i](mut)
 		}
 		if _, err := mut.Mutate(ctx, cuo.mutation); err != nil {
@@ -289,12 +296,12 @@ func (cuo *ConnectorUpdateOne) ExecX(ctx context.Context) {
 func (cuo *ConnectorUpdateOne) check() error {
 	if v, ok := cuo.mutation.GetType(); ok {
 		if err := connector.TypeValidator(v); err != nil {
-			return &ValidationError{Name: "type", err: fmt.Errorf("db: validator failed for field \"type\": %w", err)}
+			return &ValidationError{Name: "type", err: fmt.Errorf(`db: validator failed for field "Connector.type": %w`, err)}
 		}
 	}
 	if v, ok := cuo.mutation.Name(); ok {
 		if err := connector.NameValidator(v); err != nil {
-			return &ValidationError{Name: "name", err: fmt.Errorf("db: validator failed for field \"name\": %w", err)}
+			return &ValidationError{Name: "name", err: fmt.Errorf(`db: validator failed for field "Connector.name": %w`, err)}
 		}
 	}
 	return nil
@@ -313,7 +320,7 @@ func (cuo *ConnectorUpdateOne) sqlSave(ctx context.Context) (_node *Connector, e
 	}
 	id, ok := cuo.mutation.ID()
 	if !ok {
-		return nil, &ValidationError{Name: "ID", err: fmt.Errorf("missing Connector.ID for update")}
+		return nil, &ValidationError{Name: "id", err: errors.New(`db: missing "Connector.id" for update`)}
 	}
 	_spec.Node.ID.Value = id
 	if fields := cuo.fields; len(fields) > 0 {
@@ -369,8 +376,8 @@ func (cuo *ConnectorUpdateOne) sqlSave(ctx context.Context) (_node *Connector, e
 	if err = sqlgraph.UpdateNode(ctx, cuo.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{connector.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
-			err = cerr
+		} else if sqlgraph.IsConstraintError(err) {
+			err = &ConstraintError{err.Error(), err}
 		}
 		return nil, err
 	}

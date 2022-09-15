@@ -106,7 +106,7 @@ func (arq *AuthRequestQuery) FirstIDX(ctx context.Context) string {
 }
 
 // Only returns a single AuthRequest entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when exactly one AuthRequest entity is not found.
+// Returns a *NotSingularError when more than one AuthRequest entity is found.
 // Returns a *NotFoundError when no AuthRequest entities are found.
 func (arq *AuthRequestQuery) Only(ctx context.Context) (*AuthRequest, error) {
 	nodes, err := arq.Limit(2).All(ctx)
@@ -133,7 +133,7 @@ func (arq *AuthRequestQuery) OnlyX(ctx context.Context) *AuthRequest {
 }
 
 // OnlyID is like Only, but returns the only AuthRequest ID in the query.
-// Returns a *NotSingularError when exactly one AuthRequest ID is not found.
+// Returns a *NotSingularError when more than one AuthRequest ID is found.
 // Returns a *NotFoundError when no entities are found.
 func (arq *AuthRequestQuery) OnlyID(ctx context.Context) (id string, err error) {
 	var ids []string
@@ -242,8 +242,9 @@ func (arq *AuthRequestQuery) Clone() *AuthRequestQuery {
 		order:      append([]OrderFunc{}, arq.order...),
 		predicates: append([]predicate.AuthRequest{}, arq.predicates...),
 		// clone intermediate query.
-		sql:  arq.sql.Clone(),
-		path: arq.path,
+		sql:    arq.sql.Clone(),
+		path:   arq.path,
+		unique: arq.unique,
 	}
 }
 
@@ -287,8 +288,8 @@ func (arq *AuthRequestQuery) GroupBy(field string, fields ...string) *AuthReques
 //		Select(authrequest.FieldClientID).
 //		Scan(ctx, &v)
 //
-func (arq *AuthRequestQuery) Select(field string, fields ...string) *AuthRequestSelect {
-	arq.fields = append([]string{field}, fields...)
+func (arq *AuthRequestQuery) Select(fields ...string) *AuthRequestSelect {
+	arq.fields = append(arq.fields, fields...)
 	return &AuthRequestSelect{AuthRequestQuery: arq}
 }
 
@@ -336,6 +337,10 @@ func (arq *AuthRequestQuery) sqlAll(ctx context.Context) ([]*AuthRequest, error)
 
 func (arq *AuthRequestQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := arq.querySpec()
+	_spec.Node.Columns = arq.fields
+	if len(arq.fields) > 0 {
+		_spec.Unique = arq.unique != nil && *arq.unique
+	}
 	return sqlgraph.CountNodes(ctx, arq.driver, _spec)
 }
 
@@ -398,10 +403,17 @@ func (arq *AuthRequestQuery) querySpec() *sqlgraph.QuerySpec {
 func (arq *AuthRequestQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(arq.driver.Dialect())
 	t1 := builder.Table(authrequest.Table)
-	selector := builder.Select(t1.Columns(authrequest.Columns...)...).From(t1)
+	columns := arq.fields
+	if len(columns) == 0 {
+		columns = authrequest.Columns
+	}
+	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if arq.sql != nil {
 		selector = arq.sql
-		selector.Select(selector.Columns(authrequest.Columns...)...)
+		selector.Select(selector.Columns(columns...)...)
+	}
+	if arq.unique != nil && *arq.unique {
+		selector.Distinct()
 	}
 	for _, p := range arq.predicates {
 		p(selector)
@@ -669,13 +681,22 @@ func (argb *AuthRequestGroupBy) sqlScan(ctx context.Context, v interface{}) erro
 }
 
 func (argb *AuthRequestGroupBy) sqlQuery() *sql.Selector {
-	selector := argb.sql
-	columns := make([]string, 0, len(argb.fields)+len(argb.fns))
-	columns = append(columns, argb.fields...)
+	selector := argb.sql.Select()
+	aggregation := make([]string, 0, len(argb.fns))
 	for _, fn := range argb.fns {
-		columns = append(columns, fn(selector))
+		aggregation = append(aggregation, fn(selector))
 	}
-	return selector.Select(columns...).GroupBy(argb.fields...)
+	// If no columns were selected in a custom aggregation function, the default
+	// selection is the fields used for "group-by", and the aggregation functions.
+	if len(selector.SelectedColumns()) == 0 {
+		columns := make([]string, 0, len(argb.fields)+len(argb.fns))
+		for _, f := range argb.fields {
+			columns = append(columns, selector.C(f))
+		}
+		columns = append(columns, aggregation...)
+		selector.Select(columns...)
+	}
+	return selector.GroupBy(selector.Columns(argb.fields...)...)
 }
 
 // AuthRequestSelect is the builder for selecting fields of AuthRequest entities.
@@ -891,16 +912,10 @@ func (ars *AuthRequestSelect) BoolX(ctx context.Context) bool {
 
 func (ars *AuthRequestSelect) sqlScan(ctx context.Context, v interface{}) error {
 	rows := &sql.Rows{}
-	query, args := ars.sqlQuery().Query()
+	query, args := ars.sql.Query()
 	if err := ars.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
 	defer rows.Close()
 	return sql.ScanSlice(rows, v)
-}
-
-func (ars *AuthRequestSelect) sqlQuery() sql.Querier {
-	selector := ars.sql
-	selector.Select(selector.Columns(ars.fields...)...)
-	return selector
 }

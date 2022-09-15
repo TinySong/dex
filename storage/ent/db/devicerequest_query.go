@@ -106,7 +106,7 @@ func (drq *DeviceRequestQuery) FirstIDX(ctx context.Context) int {
 }
 
 // Only returns a single DeviceRequest entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when exactly one DeviceRequest entity is not found.
+// Returns a *NotSingularError when more than one DeviceRequest entity is found.
 // Returns a *NotFoundError when no DeviceRequest entities are found.
 func (drq *DeviceRequestQuery) Only(ctx context.Context) (*DeviceRequest, error) {
 	nodes, err := drq.Limit(2).All(ctx)
@@ -133,7 +133,7 @@ func (drq *DeviceRequestQuery) OnlyX(ctx context.Context) *DeviceRequest {
 }
 
 // OnlyID is like Only, but returns the only DeviceRequest ID in the query.
-// Returns a *NotSingularError when exactly one DeviceRequest ID is not found.
+// Returns a *NotSingularError when more than one DeviceRequest ID is found.
 // Returns a *NotFoundError when no entities are found.
 func (drq *DeviceRequestQuery) OnlyID(ctx context.Context) (id int, err error) {
 	var ids []int
@@ -242,8 +242,9 @@ func (drq *DeviceRequestQuery) Clone() *DeviceRequestQuery {
 		order:      append([]OrderFunc{}, drq.order...),
 		predicates: append([]predicate.DeviceRequest{}, drq.predicates...),
 		// clone intermediate query.
-		sql:  drq.sql.Clone(),
-		path: drq.path,
+		sql:    drq.sql.Clone(),
+		path:   drq.path,
+		unique: drq.unique,
 	}
 }
 
@@ -287,8 +288,8 @@ func (drq *DeviceRequestQuery) GroupBy(field string, fields ...string) *DeviceRe
 //		Select(devicerequest.FieldUserCode).
 //		Scan(ctx, &v)
 //
-func (drq *DeviceRequestQuery) Select(field string, fields ...string) *DeviceRequestSelect {
-	drq.fields = append([]string{field}, fields...)
+func (drq *DeviceRequestQuery) Select(fields ...string) *DeviceRequestSelect {
+	drq.fields = append(drq.fields, fields...)
 	return &DeviceRequestSelect{DeviceRequestQuery: drq}
 }
 
@@ -336,6 +337,10 @@ func (drq *DeviceRequestQuery) sqlAll(ctx context.Context) ([]*DeviceRequest, er
 
 func (drq *DeviceRequestQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := drq.querySpec()
+	_spec.Node.Columns = drq.fields
+	if len(drq.fields) > 0 {
+		_spec.Unique = drq.unique != nil && *drq.unique
+	}
 	return sqlgraph.CountNodes(ctx, drq.driver, _spec)
 }
 
@@ -398,10 +403,17 @@ func (drq *DeviceRequestQuery) querySpec() *sqlgraph.QuerySpec {
 func (drq *DeviceRequestQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(drq.driver.Dialect())
 	t1 := builder.Table(devicerequest.Table)
-	selector := builder.Select(t1.Columns(devicerequest.Columns...)...).From(t1)
+	columns := drq.fields
+	if len(columns) == 0 {
+		columns = devicerequest.Columns
+	}
+	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if drq.sql != nil {
 		selector = drq.sql
-		selector.Select(selector.Columns(devicerequest.Columns...)...)
+		selector.Select(selector.Columns(columns...)...)
+	}
+	if drq.unique != nil && *drq.unique {
+		selector.Distinct()
 	}
 	for _, p := range drq.predicates {
 		p(selector)
@@ -669,13 +681,22 @@ func (drgb *DeviceRequestGroupBy) sqlScan(ctx context.Context, v interface{}) er
 }
 
 func (drgb *DeviceRequestGroupBy) sqlQuery() *sql.Selector {
-	selector := drgb.sql
-	columns := make([]string, 0, len(drgb.fields)+len(drgb.fns))
-	columns = append(columns, drgb.fields...)
+	selector := drgb.sql.Select()
+	aggregation := make([]string, 0, len(drgb.fns))
 	for _, fn := range drgb.fns {
-		columns = append(columns, fn(selector))
+		aggregation = append(aggregation, fn(selector))
 	}
-	return selector.Select(columns...).GroupBy(drgb.fields...)
+	// If no columns were selected in a custom aggregation function, the default
+	// selection is the fields used for "group-by", and the aggregation functions.
+	if len(selector.SelectedColumns()) == 0 {
+		columns := make([]string, 0, len(drgb.fields)+len(drgb.fns))
+		for _, f := range drgb.fields {
+			columns = append(columns, selector.C(f))
+		}
+		columns = append(columns, aggregation...)
+		selector.Select(columns...)
+	}
+	return selector.GroupBy(selector.Columns(drgb.fields...)...)
 }
 
 // DeviceRequestSelect is the builder for selecting fields of DeviceRequest entities.
@@ -891,16 +912,10 @@ func (drs *DeviceRequestSelect) BoolX(ctx context.Context) bool {
 
 func (drs *DeviceRequestSelect) sqlScan(ctx context.Context, v interface{}) error {
 	rows := &sql.Rows{}
-	query, args := drs.sqlQuery().Query()
+	query, args := drs.sql.Query()
 	if err := drs.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
 	defer rows.Close()
 	return sql.ScanSlice(rows, v)
-}
-
-func (drs *DeviceRequestSelect) sqlQuery() sql.Querier {
-	selector := drs.sql
-	selector.Select(selector.Columns(drs.fields...)...)
-	return selector
 }

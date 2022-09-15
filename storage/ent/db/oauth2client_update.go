@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"entgo.io/ent/dialect/sql"
@@ -20,9 +21,9 @@ type OAuth2ClientUpdate struct {
 	mutation *OAuth2ClientMutation
 }
 
-// Where adds a new predicate for the OAuth2ClientUpdate builder.
+// Where appends a list predicates to the OAuth2ClientUpdate builder.
 func (ou *OAuth2ClientUpdate) Where(ps ...predicate.OAuth2Client) *OAuth2ClientUpdate {
-	ou.mutation.predicates = append(ou.mutation.predicates, ps...)
+	ou.mutation.Where(ps...)
 	return ou
 }
 
@@ -105,6 +106,9 @@ func (ou *OAuth2ClientUpdate) Save(ctx context.Context) (int, error) {
 			return affected, err
 		})
 		for i := len(ou.hooks) - 1; i >= 0; i-- {
+			if ou.hooks[i] == nil {
+				return 0, fmt.Errorf("db: uninitialized hook (forgotten import db/runtime?)")
+			}
 			mut = ou.hooks[i](mut)
 		}
 		if _, err := mut.Mutate(ctx, ou.mutation); err != nil {
@@ -140,17 +144,17 @@ func (ou *OAuth2ClientUpdate) ExecX(ctx context.Context) {
 func (ou *OAuth2ClientUpdate) check() error {
 	if v, ok := ou.mutation.Secret(); ok {
 		if err := oauth2client.SecretValidator(v); err != nil {
-			return &ValidationError{Name: "secret", err: fmt.Errorf("db: validator failed for field \"secret\": %w", err)}
+			return &ValidationError{Name: "secret", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.secret": %w`, err)}
 		}
 	}
 	if v, ok := ou.mutation.Name(); ok {
 		if err := oauth2client.NameValidator(v); err != nil {
-			return &ValidationError{Name: "name", err: fmt.Errorf("db: validator failed for field \"name\": %w", err)}
+			return &ValidationError{Name: "name", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.name": %w`, err)}
 		}
 	}
 	if v, ok := ou.mutation.LogoURL(); ok {
 		if err := oauth2client.LogoURLValidator(v); err != nil {
-			return &ValidationError{Name: "logo_url", err: fmt.Errorf("db: validator failed for field \"logo_url\": %w", err)}
+			return &ValidationError{Name: "logo_url", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.logo_url": %w`, err)}
 		}
 	}
 	return nil
@@ -231,8 +235,8 @@ func (ou *OAuth2ClientUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if n, err = sqlgraph.UpdateNodes(ctx, ou.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{oauth2client.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
-			err = cerr
+		} else if sqlgraph.IsConstraintError(err) {
+			err = &ConstraintError{err.Error(), err}
 		}
 		return 0, err
 	}
@@ -333,6 +337,9 @@ func (ouo *OAuth2ClientUpdateOne) Save(ctx context.Context) (*OAuth2Client, erro
 			return node, err
 		})
 		for i := len(ouo.hooks) - 1; i >= 0; i-- {
+			if ouo.hooks[i] == nil {
+				return nil, fmt.Errorf("db: uninitialized hook (forgotten import db/runtime?)")
+			}
 			mut = ouo.hooks[i](mut)
 		}
 		if _, err := mut.Mutate(ctx, ouo.mutation); err != nil {
@@ -368,17 +375,17 @@ func (ouo *OAuth2ClientUpdateOne) ExecX(ctx context.Context) {
 func (ouo *OAuth2ClientUpdateOne) check() error {
 	if v, ok := ouo.mutation.Secret(); ok {
 		if err := oauth2client.SecretValidator(v); err != nil {
-			return &ValidationError{Name: "secret", err: fmt.Errorf("db: validator failed for field \"secret\": %w", err)}
+			return &ValidationError{Name: "secret", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.secret": %w`, err)}
 		}
 	}
 	if v, ok := ouo.mutation.Name(); ok {
 		if err := oauth2client.NameValidator(v); err != nil {
-			return &ValidationError{Name: "name", err: fmt.Errorf("db: validator failed for field \"name\": %w", err)}
+			return &ValidationError{Name: "name", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.name": %w`, err)}
 		}
 	}
 	if v, ok := ouo.mutation.LogoURL(); ok {
 		if err := oauth2client.LogoURLValidator(v); err != nil {
-			return &ValidationError{Name: "logo_url", err: fmt.Errorf("db: validator failed for field \"logo_url\": %w", err)}
+			return &ValidationError{Name: "logo_url", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.logo_url": %w`, err)}
 		}
 	}
 	return nil
@@ -397,7 +404,7 @@ func (ouo *OAuth2ClientUpdateOne) sqlSave(ctx context.Context) (_node *OAuth2Cli
 	}
 	id, ok := ouo.mutation.ID()
 	if !ok {
-		return nil, &ValidationError{Name: "ID", err: fmt.Errorf("missing OAuth2Client.ID for update")}
+		return nil, &ValidationError{Name: "id", err: errors.New(`db: missing "OAuth2Client.id" for update`)}
 	}
 	_spec.Node.ID.Value = id
 	if fields := ouo.fields; len(fields) > 0 {
@@ -479,8 +486,8 @@ func (ouo *OAuth2ClientUpdateOne) sqlSave(ctx context.Context) (_node *OAuth2Cli
 	if err = sqlgraph.UpdateNode(ctx, ouo.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{oauth2client.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
-			err = cerr
+		} else if sqlgraph.IsConstraintError(err) {
+			err = &ConstraintError{err.Error(), err}
 		}
 		return nil, err
 	}

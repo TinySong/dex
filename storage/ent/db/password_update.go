@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"entgo.io/ent/dialect/sql"
@@ -20,9 +21,9 @@ type PasswordUpdate struct {
 	mutation *PasswordMutation
 }
 
-// Where adds a new predicate for the PasswordUpdate builder.
+// Where appends a list predicates to the PasswordUpdate builder.
 func (pu *PasswordUpdate) Where(ps ...predicate.Password) *PasswordUpdate {
-	pu.mutation.predicates = append(pu.mutation.predicates, ps...)
+	pu.mutation.Where(ps...)
 	return pu
 }
 
@@ -81,6 +82,9 @@ func (pu *PasswordUpdate) Save(ctx context.Context) (int, error) {
 			return affected, err
 		})
 		for i := len(pu.hooks) - 1; i >= 0; i-- {
+			if pu.hooks[i] == nil {
+				return 0, fmt.Errorf("db: uninitialized hook (forgotten import db/runtime?)")
+			}
 			mut = pu.hooks[i](mut)
 		}
 		if _, err := mut.Mutate(ctx, pu.mutation); err != nil {
@@ -116,17 +120,17 @@ func (pu *PasswordUpdate) ExecX(ctx context.Context) {
 func (pu *PasswordUpdate) check() error {
 	if v, ok := pu.mutation.Email(); ok {
 		if err := password.EmailValidator(v); err != nil {
-			return &ValidationError{Name: "email", err: fmt.Errorf("db: validator failed for field \"email\": %w", err)}
+			return &ValidationError{Name: "email", err: fmt.Errorf(`db: validator failed for field "Password.email": %w`, err)}
 		}
 	}
 	if v, ok := pu.mutation.Username(); ok {
 		if err := password.UsernameValidator(v); err != nil {
-			return &ValidationError{Name: "username", err: fmt.Errorf("db: validator failed for field \"username\": %w", err)}
+			return &ValidationError{Name: "username", err: fmt.Errorf(`db: validator failed for field "Password.username": %w`, err)}
 		}
 	}
 	if v, ok := pu.mutation.UserID(); ok {
 		if err := password.UserIDValidator(v); err != nil {
-			return &ValidationError{Name: "user_id", err: fmt.Errorf("db: validator failed for field \"user_id\": %w", err)}
+			return &ValidationError{Name: "user_id", err: fmt.Errorf(`db: validator failed for field "Password.user_id": %w`, err)}
 		}
 	}
 	return nil
@@ -181,8 +185,8 @@ func (pu *PasswordUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if n, err = sqlgraph.UpdateNodes(ctx, pu.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{password.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
-			err = cerr
+		} else if sqlgraph.IsConstraintError(err) {
+			err = &ConstraintError{err.Error(), err}
 		}
 		return 0, err
 	}
@@ -259,6 +263,9 @@ func (puo *PasswordUpdateOne) Save(ctx context.Context) (*Password, error) {
 			return node, err
 		})
 		for i := len(puo.hooks) - 1; i >= 0; i-- {
+			if puo.hooks[i] == nil {
+				return nil, fmt.Errorf("db: uninitialized hook (forgotten import db/runtime?)")
+			}
 			mut = puo.hooks[i](mut)
 		}
 		if _, err := mut.Mutate(ctx, puo.mutation); err != nil {
@@ -294,17 +301,17 @@ func (puo *PasswordUpdateOne) ExecX(ctx context.Context) {
 func (puo *PasswordUpdateOne) check() error {
 	if v, ok := puo.mutation.Email(); ok {
 		if err := password.EmailValidator(v); err != nil {
-			return &ValidationError{Name: "email", err: fmt.Errorf("db: validator failed for field \"email\": %w", err)}
+			return &ValidationError{Name: "email", err: fmt.Errorf(`db: validator failed for field "Password.email": %w`, err)}
 		}
 	}
 	if v, ok := puo.mutation.Username(); ok {
 		if err := password.UsernameValidator(v); err != nil {
-			return &ValidationError{Name: "username", err: fmt.Errorf("db: validator failed for field \"username\": %w", err)}
+			return &ValidationError{Name: "username", err: fmt.Errorf(`db: validator failed for field "Password.username": %w`, err)}
 		}
 	}
 	if v, ok := puo.mutation.UserID(); ok {
 		if err := password.UserIDValidator(v); err != nil {
-			return &ValidationError{Name: "user_id", err: fmt.Errorf("db: validator failed for field \"user_id\": %w", err)}
+			return &ValidationError{Name: "user_id", err: fmt.Errorf(`db: validator failed for field "Password.user_id": %w`, err)}
 		}
 	}
 	return nil
@@ -323,7 +330,7 @@ func (puo *PasswordUpdateOne) sqlSave(ctx context.Context) (_node *Password, err
 	}
 	id, ok := puo.mutation.ID()
 	if !ok {
-		return nil, &ValidationError{Name: "ID", err: fmt.Errorf("missing Password.ID for update")}
+		return nil, &ValidationError{Name: "id", err: errors.New(`db: missing "Password.id" for update`)}
 	}
 	_spec.Node.ID.Value = id
 	if fields := puo.fields; len(fields) > 0 {
@@ -379,8 +386,8 @@ func (puo *PasswordUpdateOne) sqlSave(ctx context.Context) (_node *Password, err
 	if err = sqlgraph.UpdateNode(ctx, puo.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{password.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
-			err = cerr
+		} else if sqlgraph.IsConstraintError(err) {
+			err = &ConstraintError{err.Error(), err}
 		}
 		return nil, err
 	}

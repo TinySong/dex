@@ -87,11 +87,17 @@ func (oc *OAuth2ClientCreate) Save(ctx context.Context) (*OAuth2Client, error) {
 				return nil, err
 			}
 			oc.mutation = mutation
-			node, err = oc.sqlSave(ctx)
+			if node, err = oc.sqlSave(ctx); err != nil {
+				return nil, err
+			}
+			mutation.id = &node.ID
 			mutation.done = true
 			return node, err
 		})
 		for i := len(oc.hooks) - 1; i >= 0; i-- {
+			if oc.hooks[i] == nil {
+				return nil, fmt.Errorf("db: uninitialized hook (forgotten import db/runtime?)")
+			}
 			mut = oc.hooks[i](mut)
 		}
 		if _, err := mut.Mutate(ctx, oc.mutation); err != nil {
@@ -110,38 +116,51 @@ func (oc *OAuth2ClientCreate) SaveX(ctx context.Context) *OAuth2Client {
 	return v
 }
 
+// Exec executes the query.
+func (oc *OAuth2ClientCreate) Exec(ctx context.Context) error {
+	_, err := oc.Save(ctx)
+	return err
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (oc *OAuth2ClientCreate) ExecX(ctx context.Context) {
+	if err := oc.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
 // check runs all checks and user-defined validators on the builder.
 func (oc *OAuth2ClientCreate) check() error {
 	if _, ok := oc.mutation.Secret(); !ok {
-		return &ValidationError{Name: "secret", err: errors.New("db: missing required field \"secret\"")}
+		return &ValidationError{Name: "secret", err: errors.New(`db: missing required field "OAuth2Client.secret"`)}
 	}
 	if v, ok := oc.mutation.Secret(); ok {
 		if err := oauth2client.SecretValidator(v); err != nil {
-			return &ValidationError{Name: "secret", err: fmt.Errorf("db: validator failed for field \"secret\": %w", err)}
+			return &ValidationError{Name: "secret", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.secret": %w`, err)}
 		}
 	}
 	if _, ok := oc.mutation.Public(); !ok {
-		return &ValidationError{Name: "public", err: errors.New("db: missing required field \"public\"")}
+		return &ValidationError{Name: "public", err: errors.New(`db: missing required field "OAuth2Client.public"`)}
 	}
 	if _, ok := oc.mutation.Name(); !ok {
-		return &ValidationError{Name: "name", err: errors.New("db: missing required field \"name\"")}
+		return &ValidationError{Name: "name", err: errors.New(`db: missing required field "OAuth2Client.name"`)}
 	}
 	if v, ok := oc.mutation.Name(); ok {
 		if err := oauth2client.NameValidator(v); err != nil {
-			return &ValidationError{Name: "name", err: fmt.Errorf("db: validator failed for field \"name\": %w", err)}
+			return &ValidationError{Name: "name", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.name": %w`, err)}
 		}
 	}
 	if _, ok := oc.mutation.LogoURL(); !ok {
-		return &ValidationError{Name: "logo_url", err: errors.New("db: missing required field \"logo_url\"")}
+		return &ValidationError{Name: "logo_url", err: errors.New(`db: missing required field "OAuth2Client.logo_url"`)}
 	}
 	if v, ok := oc.mutation.LogoURL(); ok {
 		if err := oauth2client.LogoURLValidator(v); err != nil {
-			return &ValidationError{Name: "logo_url", err: fmt.Errorf("db: validator failed for field \"logo_url\": %w", err)}
+			return &ValidationError{Name: "logo_url", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.logo_url": %w`, err)}
 		}
 	}
 	if v, ok := oc.mutation.ID(); ok {
 		if err := oauth2client.IDValidator(v); err != nil {
-			return &ValidationError{Name: "id", err: fmt.Errorf("db: validator failed for field \"id\": %w", err)}
+			return &ValidationError{Name: "id", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.id": %w`, err)}
 		}
 	}
 	return nil
@@ -150,10 +169,17 @@ func (oc *OAuth2ClientCreate) check() error {
 func (oc *OAuth2ClientCreate) sqlSave(ctx context.Context) (*OAuth2Client, error) {
 	_node, _spec := oc.createSpec()
 	if err := sqlgraph.CreateNode(ctx, oc.driver, _spec); err != nil {
-		if cerr, ok := isSQLConstraintError(err); ok {
-			err = cerr
+		if sqlgraph.IsConstraintError(err) {
+			err = &ConstraintError{err.Error(), err}
 		}
 		return nil, err
+	}
+	if _spec.ID.Value != nil {
+		if id, ok := _spec.ID.Value.(string); ok {
+			_node.ID = id
+		} else {
+			return nil, fmt.Errorf("unexpected OAuth2Client.ID type: %T", _spec.ID.Value)
+		}
 	}
 	return _node, nil
 }
@@ -252,17 +278,19 @@ func (ocb *OAuth2ClientCreateBulk) Save(ctx context.Context) ([]*OAuth2Client, e
 				if i < len(mutators)-1 {
 					_, err = mutators[i+1].Mutate(root, ocb.builders[i+1].mutation)
 				} else {
+					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
 					// Invoke the actual operation on the latest mutation in the chain.
-					if err = sqlgraph.BatchCreate(ctx, ocb.driver, &sqlgraph.BatchCreateSpec{Nodes: specs}); err != nil {
-						if cerr, ok := isSQLConstraintError(err); ok {
-							err = cerr
+					if err = sqlgraph.BatchCreate(ctx, ocb.driver, spec); err != nil {
+						if sqlgraph.IsConstraintError(err) {
+							err = &ConstraintError{err.Error(), err}
 						}
 					}
 				}
-				mutation.done = true
 				if err != nil {
 					return nil, err
 				}
+				mutation.id = &nodes[i].ID
+				mutation.done = true
 				return nodes[i], nil
 			})
 			for i := len(builder.hooks) - 1; i >= 0; i-- {
@@ -286,4 +314,17 @@ func (ocb *OAuth2ClientCreateBulk) SaveX(ctx context.Context) []*OAuth2Client {
 		panic(err)
 	}
 	return v
+}
+
+// Exec executes the query.
+func (ocb *OAuth2ClientCreateBulk) Exec(ctx context.Context) error {
+	_, err := ocb.Save(ctx)
+	return err
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (ocb *OAuth2ClientCreateBulk) ExecX(ctx context.Context) {
+	if err := ocb.Exec(ctx); err != nil {
+		panic(err)
+	}
 }
