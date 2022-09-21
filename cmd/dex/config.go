@@ -31,6 +31,9 @@ type Config struct {
 	Expiry    Expiry    `json:"expiry"`
 	Logger    Logger    `json:"logger"`
 
+	// AdditionalConfig are used for customize extension variable
+	AdditionalConfig map[string]interface{} `json:"additionalConfig"`
+
 	Frontend server.WebConfig `json:"frontend"`
 
 	// StaticConnectors are user defined connectors specified in the ConfigMap

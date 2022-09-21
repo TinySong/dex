@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/dexidp/dex/pkg/extension"
 	"github.com/gorilla/mux"
 	jose "gopkg.in/square/go-jose.v2"
 
@@ -555,7 +556,8 @@ func (s *Server) handleConnectorCallback(w http.ResponseWriter, r *http.Request)
 		s.renderError(r, w, http.StatusInternalServerError, fmt.Sprintf("Failed to authenticate: %v", err))
 		return
 	}
-
+	// add default groups for 3rd user
+	identity.Groups = extension.FillDefaultGroups(identity.Groups)
 	redirectURL, err := s.finalizeLogin(identity, authReq, conn.Connector)
 	if err != nil {
 		s.logger.Errorf("Failed to finalize login: %v", err)
