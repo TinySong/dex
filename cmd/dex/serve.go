@@ -17,6 +17,7 @@ import (
 	gosundheit "github.com/AppsFlyer/go-sundheit"
 	"github.com/AppsFlyer/go-sundheit/checks"
 	gosundheithttp "github.com/AppsFlyer/go-sundheit/http"
+	"github.com/dexidp/dex/pkg/extension"
 	"github.com/ghodss/yaml"
 	grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/oklog/run"
@@ -87,6 +88,7 @@ func runServe(options serveOptions) error {
 	}
 
 	applyConfigOverrides(options, &c)
+	extension.NewParams(c.AdditionalConfig)
 
 	logger, err := newLogger(c.Logger.Level, c.Logger.Format)
 	if err != nil {
