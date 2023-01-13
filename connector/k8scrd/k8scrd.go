@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/dexidp/dex/connector"
@@ -150,7 +151,7 @@ func (c *k8scrdConnector) getRespose(ctx context.Context, username, pass string)
 	if c.ClientKey != "" && c.ClientCert != "" {
 		cert, err := tls.LoadX509KeyPair(c.ClientCert, c.ClientKey)
 		if err != nil {
-			return nil, fmt.Errorf("ldap: load client cert failed: %v", err)
+			return nil, fmt.Errorf("k8scrd: load client cert failed: %v", err)
 		}
 		tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
 	}
@@ -167,12 +168,15 @@ func (c *k8scrdConnector) getRespose(ctx context.Context, username, pass string)
 	if err != nil {
 		return nil, err
 	}
+	cookieID := fmt.Sprintf("%v", ctx.Value("Cookieid"))
 	authURL := c.Host + "/login"
+	if cookieID != "" {
+		authURL = authURL + fmt.Sprintf("?cookieid=%s", url.QueryEscape(cookieID))
+	}
 	req, err := http.NewRequest("POST", authURL, bytes.NewBuffer(jsonValue))
 
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(ctx)
-
 	return client.Do(req)
 
 }
