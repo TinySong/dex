@@ -255,6 +255,32 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 			}
 			http.Redirect(w, r, callbackURL, http.StatusFound)
 		case connector.PasswordConnector:
+			// using cookieid carry the key information of the cookie. If cookieid exists, the cookie is used to obtain
+			// the basic information of the user and issue a IDtoken.
+			if cookieid := r.Form.Get("cookieid"); cookieid != "" {
+				identity, ok, err := conn.Login(context.WithValue(r.Context(), "cookieid", cookieid), parseScopes(authReq.Scopes), "", "")
+				if err != nil {
+					s.logger.Errorf("Failed to login user: %v", err)
+					s.renderError(r, w, http.StatusInternalServerError, fmt.Sprintf("Login error: %v", err))
+					return
+				}
+				if !ok {
+					if err := s.templates.password(r, w, r.URL.String(), identity.Username, usernamePrompt(conn), true, backLink); err != nil {
+						s.logger.Errorf("Server template error: %v", err)
+					}
+					return
+				}
+				// add default groups for 3rd user
+				identity.Groups = extension.FillDefaultGroups(identity.Groups)
+				redirectURL, err := s.finalizeLogin(identity, *authReq, conn)
+				if err != nil {
+					s.logger.Errorf("Failed to finalize login: %v", err)
+					s.renderError(r, w, http.StatusInternalServerError, "Login error.")
+					return
+				}
+				http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+				return
+			}
 			loginURL := url.URL{
 				Path: s.absPath("/auth", connID, "login"),
 			}
@@ -264,6 +290,7 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 			loginURL.RawQuery = q.Encode()
 
 			http.Redirect(w, r, loginURL.String(), http.StatusFound)
+			// @deprecated: not used for now
 		case connector.TenxConnector:
 			s.logger.Info("tenxcloud connector")
 
@@ -463,7 +490,7 @@ func (s *Server) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 		password := r.FormValue("password")
 		scopes := parseScopes(authReq.Scopes)
 
-		identity, ok, err := pwConn.Login(context.WithValue(r.Context(), "Cookieid", authReq.State), scopes, username, password)
+		identity, ok, err := pwConn.Login(context.WithValue(r.Context(), "cookieid", authReq.State), scopes, username, password)
 		if err != nil {
 			s.logger.Errorf("Failed to login user: %v", err)
 			s.renderError(r, w, http.StatusInternalServerError, fmt.Sprintf("Login error: %v", err))

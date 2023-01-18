@@ -90,9 +90,6 @@ func (c *Config) Open(id string, logger log.Logger) (connector.Connector, error)
 
 func (c *k8scrdConnector) Login(ctx context.Context, s connector.Scopes, username, passowrd string) (identity connector.Identity, validPass bool, err error) {
 	c.logger.Debugf("userName: %s, password: %s", username, passowrd)
-	if username == "" || passowrd == "" {
-		return identity, false, fmt.Errorf("username or password is nil. username: %s, password: %s", username, passowrd)
-	}
 	resp, err := c.getRespose(ctx, username, passowrd)
 	if err != nil {
 		return identity, false, fmt.Errorf("auth failed: ", err)
@@ -168,7 +165,12 @@ func (c *k8scrdConnector) getRespose(ctx context.Context, username, pass string)
 	if err != nil {
 		return nil, err
 	}
-	cookieID := fmt.Sprintf("%v", ctx.Value("Cookieid"))
+	cookieID := fmt.Sprintf("%v", ctx.Value("cookieid"))
+
+	if username == "" && pass == "" && cookieID == "" {
+		return nil, fmt.Errorf("username or password is nil or cookie is nil. username: %s, password: %s, cookieid: %s", username, pass, cookieID)
+	}
+
 	authURL := c.Host + "/login"
 	if cookieID != "" {
 		authURL = authURL + fmt.Sprintf("?cookieid=%s", url.QueryEscape(cookieID))
