@@ -94,6 +94,12 @@ func (c *k8scrdConnector) Login(ctx context.Context, s connector.Scopes, usernam
 	if err != nil {
 		return identity, false, fmt.Errorf("auth failed: ", err)
 	}
+	// if statusCode == http.StatusMovedPermanently,  oidc-server will redirect to the location adress.
+	if resp.StatusCode == http.StatusMovedPermanently {
+		identity.ConnectorData = []byte(resp.Header.Get("Location"))
+		return identity, false, nil
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return identity, false, fmt.Errorf("response status code: %d, error message: ", resp.StatusCode)
 	}
@@ -126,7 +132,6 @@ func (c *k8scrdConnector) Prompt() string {
 }
 
 func (c *k8scrdConnector) Refresh(ctx context.Context, s connector.Scopes, identity connector.Identity) (connector.Identity, error) {
-	fmt.Println(identity)
 	return identity, nil
 }
 
@@ -155,7 +160,12 @@ func (c *k8scrdConnector) getRespose(ctx context.Context, username, pass string)
 
 	client := &http.Client{Transport: &http.Transport{
 		TLSClientConfig: tlsConfig,
-	}}
+	},
+		// disable net/http  auto redirect feature
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+
+		}}
 
 	jsonData := User{
 		Name:     username,

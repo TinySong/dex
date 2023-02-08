@@ -265,6 +265,19 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				if !ok {
+					if len(identity.ConnectorData) != 0 {
+						redirectURL, err := url.Parse(string(identity.ConnectorData))
+						if err == nil {
+							q := redirectURL.Query()
+							q.Add("redirect_uri", authReq.RedirectURI)
+							redirectURL.RawQuery = q.Encode()
+							// delete authrequest, current authRequest lifttime is over.
+							s.storage.DeleteAuthRequest(authReq.ID)
+							http.Redirect(w, r, redirectURL.String(), http.StatusSeeOther)
+							return
+						}
+
+					}
 					if err := s.templates.password(r, w, r.URL.String(), identity.Username, usernamePrompt(conn), true, backLink); err != nil {
 						s.logger.Errorf("Server template error: %v", err)
 					}
@@ -490,18 +503,33 @@ func (s *Server) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 		password := r.FormValue("password")
 		scopes := parseScopes(authReq.Scopes)
 
-		identity, ok, err := pwConn.Login(context.WithValue(r.Context(), "cookieid", authReq.State), scopes, username, password)
+		identity, ok, err := pwConn.Login(r.Context(), scopes, username, password)
 		if err != nil {
 			s.logger.Errorf("Failed to login user: %v", err)
 			s.renderError(r, w, http.StatusInternalServerError, fmt.Sprintf("Login error: %v", err))
 			return
 		}
 		if !ok {
+			if len(identity.ConnectorData) != 0 {
+				redirectURL, err := url.Parse(string(identity.ConnectorData))
+				if err == nil {
+					q := redirectURL.Query()
+					q.Add("redirect_uri", authReq.RedirectURI)
+					redirectURL.RawQuery = q.Encode()
+					// delete authrequest, current authRequest lifttime is over.
+					s.storage.DeleteAuthRequest(authReq.ID)
+					http.Redirect(w, r, redirectURL.String(), http.StatusSeeOther)
+					return
+				}
+
+			}
+
 			if err := s.templates.password(r, w, r.URL.String(), username, usernamePrompt(pwConn), true, backLink); err != nil {
 				s.logger.Errorf("Server template error: %v", err)
 			}
 			return
 		}
+		identity.Groups = extension.FillDefaultGroups(identity.Groups)
 		redirectURL, err := s.finalizeLogin(identity, authReq, conn.Connector)
 		if err != nil {
 			s.logger.Errorf("Failed to finalize login: %v", err)
